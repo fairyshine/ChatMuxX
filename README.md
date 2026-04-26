@@ -93,27 +93,55 @@ codex --version
 cargo --version
 ```
 
-## Build
+## Basic Operations
 
-From the repository root:
+Build the development binary:
 
 ```bash
 cargo build
 ```
 
-The development binary is:
+Run the local binary:
 
 ```bash
-target/debug/cmx
+target/debug/cmx --help
 ```
 
-You can also install it into Cargo's local bin directory:
+Install `cmx` into Cargo's local bin directory:
 
 ```bash
 cargo install --path crates/cmx
 ```
 
-After installation, use `cmx` directly instead of `target/debug/cmx`.
+After installation, use `cmx` directly:
+
+```bash
+cmx --help
+```
+
+Run a quick local check:
+
+```bash
+target/debug/cmx doctor
+```
+
+Start the foreground daemon:
+
+```bash
+target/debug/cmx daemon
+```
+
+List local sessions:
+
+```bash
+target/debug/cmx sessions list
+```
+
+Create a local test session without WeChat:
+
+```bash
+target/debug/cmx sessions new /tmp shell
+```
 
 ## First Run
 

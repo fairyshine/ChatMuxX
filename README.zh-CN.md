@@ -93,27 +93,55 @@ codex --version
 cargo --version
 ```
 
-## 构建
+## 基础操作
 
-在仓库根目录执行：
+构建开发版二进制：
 
 ```bash
 cargo build
 ```
 
-开发版二进制文件位于：
+运行本地二进制：
 
 ```bash
-target/debug/cmx
+target/debug/cmx --help
 ```
 
-也可以安装到 Cargo 本地 bin 目录：
+安装 `cmx` 到 Cargo 本地 bin 目录：
 
 ```bash
 cargo install --path crates/cmx
 ```
 
-安装后可以直接使用 `cmx`，无需再输入 `target/debug/cmx`。
+安装后直接使用 `cmx`：
+
+```bash
+cmx --help
+```
+
+执行本地快速检查：
+
+```bash
+target/debug/cmx doctor
+```
+
+启动前台 daemon：
+
+```bash
+target/debug/cmx daemon
+```
+
+列出本地会话：
+
+```bash
+target/debug/cmx sessions list
+```
+
+不经过微信，创建一个本地测试会话：
+
+```bash
+target/debug/cmx sessions new /tmp shell
+```
 
 ## 首次运行
 
