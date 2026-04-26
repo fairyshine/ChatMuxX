@@ -1,58 +1,42 @@
 # Open Questions
 
-Please answer these before the design docs are considered stable.
+Status: active decisions only. Confirmed decisions are kept here briefly so the remaining unknowns have context.
 
-## Product Direction
+## Confirmed Decisions
 
-1. First release channel: Telegram first, WeChat first, or both from day one?
-2. Is ChatMuxX for one trusted owner only, or should it support multiple authorized users from the beginning?
-3. Should ChatMuxX be a daemon plus CLI only, or should it also have a local web UI/dashboard?
-4. Is the main goal to build a new implementation inspired by ccgram, or to fork/adapt ccgram heavily?
+- ChatMuxX is a complete new implementation, not a ccgram fork.
+- ccgram is only an experience and design reference.
+- WeChat is the first implementation priority for v0.1.
+- Telegram and more chat apps should be supported by the architecture later.
+- Some future chat apps may connect through external connector processes if they lack usable bot APIs.
+- v0.1 targets one trusted owner, with identity and authorization fields reserved for future multi-user support.
+- ChatMuxX core should be written in Rust.
+- The CLI binary should be `cmx`.
+- WeChat should use direct iLink HTTP calls. ChatMuxX must not depend on OpenClaw runtime, gateway, plugin installation, or OpenClaw account storage.
+- v0.1 WeChat support focuses on QR login, token persistence, long polling, `sendmessage`, and text conversation flow.
+- v0.1 providers are Codex CLI, Claude Code, and Shell.
+- Gemini, Pi, richer provider adapters, voice, live view, file workflows, and agent-to-agent messaging are future enhancements.
+- Mobile ChatMuxX commands use the `cmx ...` prefix. Provider-native `/...` commands are forwarded to the active CLI.
+- ChatMuxX uses stable internal `session_id` values; tmux window/pane IDs are runtime metadata.
+- v0.1 uses one managed tmux session, defaulting to `chatmuxx`.
+- Mobile chat must support listing, switching, closing, and creating managed windows/sessions.
+- Default provider switch behavior replaces the current managed window after confirmation.
+- Output monitoring should prefer structured provider sources for Codex/Claude and use tmux pane capture as fallback. Shell uses pane capture as primary source.
+- v0.1 state storage uses local files with `schema_version`, atomic writes, and a state module boundary. SQLite and OS keychain are future options.
+- v0.1 runs as foreground `cmx daemon`; launchd/systemd service installation is deferred.
+- `cmx daemon` should create or attach the managed `chatmuxx` tmux session from any terminal.
+- ChatMuxX should not install Claude/Codex hooks, plugins, skills, or configuration changes in v0.1. Provider integrations should keep external CLI app configurations clean.
+- Claude and Codex monitoring should use transcript/status parsing and tmux pane fallback instead of installed hooks/plugins.
+- Shell provider uses raw shell command/text interaction. Natural-language-to-command generation is not a planned goal unless explicitly reopened later.
+- Provider replacement requires confirmation, then closes the old managed tmux window and creates/binds a new provider window. v0.1 does not need an archive/keep branch; users can use `cmx new` or `cmx sessions` to keep old work explicit.
+- v0.1 sends primary assistant output as original text where possible. Status updates should be throttled. Long output is split first, then truncated with a hint to use `cmx screenshot`; automatic summarization is not used.
+- Mandatory v0.1 mobile commands: `cmx help`, `cmx new`, `cmx sessions`, `cmx switch`, `cmx close`, `cmx provider`, `cmx screenshot`, `cmx esc`, `cmx interrupt`, `cmx enter`, and `cmx recover`.
+- v0.1 must prevent unapproved users from controlling ChatMuxX. Owner identity may be initialized during WeChat login/pairing and may also be configured explicitly. Once an owner exists, all inbound commands/messages must be checked against that owner identity.
+- High-impact actions require confirmation in v0.1: `cmx close`, provider replacement, recovery replacement/fresh actions, and `cmx interrupt`. `cmx esc` and `cmx enter` do not require confirmation.
+- v0.1 may save local chat/session history for history, recovery, and debugging. Runtime logs, chat history, and credentials must be stored separately. Credentials and sensitive protocol fields must not be written into normal logs or chat history.
+- Major decisions stay in the design docs for now; ADR files are deferred.
+- `docs/development` is the v0.1 task breakdown and interface-design area.
 
-## Runtime and Language
+## Remaining Questions
 
-1. Preferred implementation language/runtime: Python, TypeScript/Node.js, or something else?
-2. Should WeChat support depend on OpenClaw being installed, or should ChatMuxX call the iLink HTTP API directly?
-3. Should the daemon run as a normal foreground process first, or include launchd/systemd service setup in the first release?
-
-## Session Model
-
-1. Should one mobile conversation always map to exactly one tmux window?
-2. Should multiple mobile channels be allowed to bind to the same tmux window?
-3. Should ChatMuxX create new tmux windows itself, or only bind to existing windows in the first release?
-4. Should session identity be based on tmux window ID, pane ID, or a ChatMuxX-generated session ID with tmux metadata?
-
-## Agent Providers
-
-1. Which providers are mandatory for v0.1: Codex, Claude Code, shell, Gemini, Pi?
-2. For Claude Code, should ChatMuxX install/use hooks, or start with transcript/terminal polling only?
-3. For Codex, should ChatMuxX parse JSONL session files, terminal output, or both?
-4. Should shell provider support natural-language-to-command generation in v0.1?
-
-## Mobile UX
-
-1. What are must-have phone actions for v0.1: screenshot, live view, Esc, Ctrl-C, Enter, file send, voice input, status, recovery?
-2. Should prompts and approval dialogs be rendered as chat buttons whenever the channel supports them?
-3. Should ChatMuxX send every agent output message, or only summaries/status unless explicitly requested?
-4. Should long output be split verbatim, summarized, or attached as a file?
-
-## Security
-
-1. How should allowed users be configured: env vars, config file, first-login pairing, or all of these?
-2. Should dangerous actions such as shell commands, Ctrl-C, file reads, and file sends require extra confirmation?
-3. What local file paths should be blocked from mobile delivery by default?
-4. Should state files be plaintext, or should tokens/account credentials be stored through OS keychain where possible?
-
-## WeChat Details
-
-1. Is WeChat personal account support a hard requirement for v0.1?
-2. Should WeChat support text only first, or include image/file/voice from the start?
-3. How should WeChat group chats map to sessions: per group, per sender within group, or explicit bind command?
-4. Is using the Tencent/OpenClaw package acceptable as a dependency, or do we need a standalone implementation?
-
-## Documentation Structure
-
-1. Should design docs stay high-level, or include detailed module APIs before coding starts?
-2. Should we write an ADR series for each confirmed decision?
-3. Should `docs/development` become the task breakdown after design stabilizes?
-
+No active open questions at this checkpoint. New questions should be added here when implementation planning reveals unclear decisions.
