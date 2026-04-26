@@ -2,70 +2,173 @@
 
 Status: draft.
 
+Testing should let ChatMuxX evolve quickly without needing real WeChat or real agent CLIs for most checks. The default test suite must be fast, deterministic, and offline.
+
 ## Test Layers
 
-## Unit Tests
+## Layer 1: Unit Tests
 
-Run with `cargo test`.
+Run by default:
 
-Focus:
+```bash
+cargo test
+```
+
+Rules:
+
+- no network.
+- no real WeChat credentials.
+- no real tmux process.
+- no real Codex/Claude requirement.
+- use temp directories for config/state.
+
+Coverage:
 
 - mobile command parsing.
-- config loading.
-- state serialization and migration.
-- redaction.
+- config defaults and loading.
+- state serialization, schema versions, and migrations.
+- atomic write helpers with temp dirs.
+- redaction and secret debug output.
 - provider launch command construction.
-- provider transcript parsers with fixtures.
-- delivery text splitting.
+- provider transcript/status parsers with fixtures.
+- delivery text splitting and truncation.
+- status throttling.
 - authorization checks.
+- flow state transitions.
 
-## Integration Tests
+## Layer 2: Component Tests With Fakes
 
-Integration tests may require local `tmux`.
+Run by default when they do not require external binaries.
 
-Focus:
+Use fake implementations for:
+
+- `TmuxClient`
+- `ProviderAdapter`
+- `ProviderRegistry`
+- `StateStore`
+- `ChannelAdapter`
+- `DeliveryService`
+
+Target behavior:
+
+- session manager create/bind/switch/close.
+- provider replacement closes old managed window and creates a new one.
+- router converts channel events into app actions.
+- action executor applies side effects in the correct order.
+- monitor dedupes provider events and persists cursors.
+
+Example fake:
+
+```rust
+struct FakeTmuxClient {
+    windows: Mutex<Vec<TmuxWindow>>,
+    sent: Mutex<Vec<(TmuxPaneId, String)>>,
+}
+```
+
+## Layer 3: Tmux Integration Tests
+
+These require local `tmux` and are opt-in.
+
+Run with:
+
+```bash
+CHATMUXX_TEST_TMUX=1 cargo test --test tmux_integration
+```
+
+Rules:
+
+- use a unique tmux session name such as `chatmuxx-test-<pid>`.
+- clean up the test tmux session on success and failure.
+- never touch the real `chatmuxx` session.
+- skip with a clear message if `tmux` is unavailable.
+
+Coverage:
 
 - ensure managed tmux session.
-- create tmux window.
+- list windows.
+- create tmux window with cwd.
 - send keys/text.
 - capture pane.
 - close managed window.
-- session manager create/switch/close behavior against tmux.
+- session manager behavior against real tmux can be added after the tmux boundary is stable.
 
-Tests should use a unique tmux session name such as `chatmuxx-test-<pid>` and clean up after themselves.
+## Layer 4: Fake WeChat iLink Server Tests
 
-## Fake WeChat iLink Server
+These exercise the WeChat adapter without real credentials.
 
-Use a local HTTP test server to exercise the WeChat adapter without real network credentials.
+Suggested implementation:
+
+- use `wiremock`, `httpmock`, or a small local `axum` server.
+- bind to localhost on an ephemeral port.
+- point `WeChatClient.base_url` to the fake server.
 
 Scenarios:
 
 - QR login success.
-- QR login timeout.
-- `getupdates` returns no messages and advances cursor correctly.
-- `getupdates` returns text message.
-- adapter preserves `context_token`.
+- QR login expired.
+- QR login cancelled.
+- `getupdates` returns no messages and advances cursor.
+- `getupdates` returns direct text message.
+- `getupdates` returns group text message.
+- adapter derives conversation id correctly.
+- adapter keeps group conversation identity separate from sender identity.
+- adapter stores `context_token` by reference.
 - `sendmessage` includes correct target user and context token.
-- expired token maps to `ChannelAccountExpired`.
+- missing context token returns typed error.
+- expired account response maps to `ChannelAccountExpired`.
+- transient HTTP/network errors trigger retry/backoff behavior at the adapter loop level.
 
-Suggested crates:
+## Layer 5: Provider Fixture Tests
 
-- `wiremock`
-- `httpmock`
-- or a small `axum` test server
-
-## Fixture Tests
-
-Store provider output fixtures under:
+Store sanitized fixtures under:
 
 ```text
 crates/chatmuxx-core/tests/fixtures/
   codex/
+    session-basic.jsonl
+    status-waiting-input.jsonl
   claude/
+    transcript-basic.jsonl
+    status-approval.txt
   shell/
+    pane-command-output.txt
 ```
 
-Fixtures should be sanitized and must not include real tokens or private project data.
+Rules:
+
+- fixtures must be synthetic or sanitized.
+- no real tokens.
+- no private project paths unless replaced with placeholders.
+- parser tests should assert normalized `ProviderEvent`, not raw parser internals.
+
+Coverage:
+
+- assistant messages.
+- status changes.
+- approval/prompt detection when visible.
+- malformed entries are ignored or produce clear parser errors.
+- pane fallback output extraction.
+
+## Layer 6: Daemon Harness Tests
+
+After app wiring exists, add a local harness that uses fake channel events.
+
+Goal:
+
+- prove the daemon can process events without WeChat.
+
+Scenario:
+
+1. start app with fake channel adapter.
+2. inject owner `InboundText("cmx help")`.
+3. assert delivery receives help text.
+4. inject `InboundText("cmx new /tmp shell")`.
+5. assert session manager action is called.
+6. inject plain text.
+7. assert provider input is sent.
+
+This keeps the core loop testable without real network or tmux.
 
 ## Manual Smoke Tests
 
@@ -76,18 +179,20 @@ Before v0.1 is considered usable:
 3. `cmx login wechat`
 4. `cmx daemon`
 5. Send `cmx help` from WeChat.
-6. Send `cmx new`.
-7. Start a Shell session.
-8. Run a simple command.
-9. Start a Codex or Claude session.
-10. Send normal text and provider `/help`.
-11. Send `cmx screenshot`.
-12. Send `cmx sessions`.
-13. Send `cmx close` and confirm.
+6. Send `cmx new /tmp shell`.
+7. Send `pwd`.
+8. Receive shell output.
+9. Send provider `/help` in a Codex or Claude session.
+10. Send `cmx screenshot`.
+11. Send `cmx sessions`.
+12. Send `cmx close`.
+13. Confirm close.
+14. Stop daemon with Ctrl-C.
+15. Restart daemon and verify state loads.
 
 ## CI Shape
 
-Initial CI can run:
+Initial CI:
 
 ```bash
 cargo fmt --check
@@ -95,9 +200,36 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Tmux integration tests may be gated behind an environment variable:
+Optional jobs:
 
 ```bash
 CHATMUXX_TEST_TMUX=1 cargo test --test tmux_integration
 ```
+
+Fake iLink tests should run in normal CI because they require no real network credentials.
+
+## Test Data and Secrets
+
+Rules:
+
+- never commit real WeChat tokens.
+- never commit real `context_token`.
+- never commit real Authorization headers.
+- mask user IDs and project paths in fixtures.
+- keep fixtures small and explain what each fixture covers.
+
+## Module Test Matrix
+
+| Module | Unit | Fake Component | Integration |
+| --- | --- | --- | --- |
+| `config` | defaults, parse errors | n/a | n/a |
+| `state` | schema, atomic write, redaction | temp-dir store | n/a |
+| `tmux` | parsers, command building | n/a | real tmux |
+| `provider` | launch, fixtures | fake session | optional real CLI later |
+| `router` | command routing, authorization | fake state/session | n/a |
+| `session` | model transitions | fake tmux/provider/state | optional real tmux |
+| `channel/wechat` | model serialization | fake iLink server | manual real login |
+| `monitor` | cursor/dedupe | fake provider/state | n/a |
+| `delivery` | splitting/throttling | fake channel | n/a |
+| `app` | wiring | fake channel/action executor | manual smoke |
 

@@ -9,32 +9,37 @@ This is the short execution index for [implementation-plan.md](implementation-pl
 1. A1: Create Rust Workspace
 2. A2: Config Loader
 3. A3: Logging and Redaction Foundation
-4. B1: State Directory and Permissions
-5. B2: Typed JSON Stores
-6. B3: History JSONL
-7. C1: Tmux Command Runner
-8. C2: Managed Session Operations
-9. D1: Provider Registry and Models
-10. D2: Shell Provider
-11. E1: Session Manager
-12. E2: Mobile Command Parser
-13. E3: Flow and Confirmation Engine
-14. E4: Router
-15. G2: Delivery Service
-16. G3: Screenshot Command
-17. D3: Codex Provider
-18. D4: Claude Provider
-19. F1: iLink Models and Client
-20. F2: QR Login
-21. F3: Long Polling and Inbound Text
-22. F4: Outbound Text
-23. G1: Monitor Runner
-24. H1: App Wiring
-25. H2: Action Executor
-26. H3: End-to-End Manual Path
-27. I1: Doctor Checks
-28. I2: Error Messages and Backoff
-29. I3: User Docs
+4. Create baseline test scaffolding:
+   - unit test module layout.
+   - temp-dir helpers.
+   - fake tmux/provider/state traits where needed.
+   - gated tmux integration test placeholder.
+5. B1: State Directory and Permissions
+6. B2: Typed JSON Stores
+7. B3: History JSONL
+8. C1: Tmux Command Runner
+9. C2: Managed Session Operations
+10. D1: Provider Registry and Models
+11. D2: Shell Provider
+12. E1: Session Manager
+13. E2: Mobile Command Parser
+14. E3: Flow and Confirmation Engine
+15. E4: Router
+16. G2: Delivery Service
+17. G3: Screenshot Command
+18. D3: Codex Provider
+19. D4: Claude Provider
+20. F1: iLink Models and Client
+21. F2: QR Login
+22. F3: Long Polling and Inbound Text
+23. F4: Outbound Text
+24. G1: Monitor Runner
+25. H1: App Wiring
+26. H2: Action Executor
+27. H3: End-to-End Manual Path
+28. I1: Doctor Checks
+29. I2: Error Messages and Backoff
+30. I3: User Docs
 
 ## Early Usable Slice
 
@@ -73,4 +78,3 @@ The smallest WeChat slice:
 - SQLite storage backend.
 - launchd/systemd service installation.
 - web UI/dashboard.
-
