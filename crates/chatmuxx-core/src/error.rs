@@ -95,6 +95,20 @@ pub enum ChatMuxXError {
 
 pub type Result<T> = std::result::Result<T, ChatMuxXError>;
 
+impl ChatMuxXError {
+    pub fn is_missing_tmux_target(&self) -> bool {
+        let Self::TmuxCommandFailed { stderr, .. } = self else {
+            return false;
+        };
+
+        stderr.contains("no server running")
+            || stderr.contains("can't find")
+            || stderr.contains("can't find pane")
+            || stderr.contains("can't find window")
+            || stderr.contains("can't find session")
+    }
+}
+
 pub(crate) trait IoContext<T> {
     fn at(self, path: impl Into<PathBuf>) -> Result<T>;
 }
@@ -103,5 +117,20 @@ impl<T> IoContext<T> for std::io::Result<T> {
     fn at(self, path: impl Into<PathBuf>) -> Result<T> {
         let path = path.into();
         self.map_err(|source| ChatMuxXError::Io { path, source })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_tmux_server_is_detected() {
+        let err = ChatMuxXError::TmuxCommandFailed {
+            command: "tmux capture-pane -p -t %1".to_owned(),
+            stderr: "no server running on /private/tmp/tmux-501/default".to_owned(),
+        };
+
+        assert!(err.is_missing_tmux_target());
     }
 }

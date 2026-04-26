@@ -9,8 +9,8 @@ use tokio::sync::mpsc;
 
 use crate::{
     channel::wechat::{
-        conversation_external_id, conversation_id, extract_text, token_ref, WeChatClient,
-        WeChatMessage,
+        conversation_external_id, conversation_id, extract_text, is_group_message, token_ref,
+        WeChatClient, WeChatMessage,
     },
     config::{default_config_path, load_config, Config},
     mobile::{parse_mobile_text, MobileCommand, ParsedInbound},
@@ -187,7 +187,7 @@ async fn persist_inbound_message(
             channel_type: ChannelType::WeChat,
             account_id: account.account_id.clone(),
             external_conversation_id: external_id,
-            kind: if message.group_id.is_some() {
+            kind: if is_group_message(message) {
                 ConversationKind::Group
             } else {
                 ConversationKind::Direct
@@ -456,7 +456,19 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
             continue;
         };
 
-        let pane = manager.capture_pane(&session.id).await?;
+        let pane = match manager.capture_pane(&session.id).await {
+            Ok(pane) => pane,
+            Err(err) if err.is_missing_tmux_target() => {
+                tracing::info!(
+                    session_id = %session.id.0,
+                    error = %err,
+                    "tmux target disappeared; marking session dead"
+                );
+                manager.mark_session_dead(&session.id).await?;
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
         let pane = trim_for_chat(&pane);
         if pane.trim().is_empty() {
             continue;

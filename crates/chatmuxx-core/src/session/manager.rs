@@ -125,7 +125,11 @@ impl SessionManager {
 
         if let Some(tmux) = &record.tmux {
             if tmux.created_by_chatmuxx || tmux.adopted {
-                self.tmux.close_window(&tmux.window_id).await?;
+                if let Err(err) = self.tmux.close_window(&tmux.window_id).await {
+                    if !err.is_missing_tmux_target() {
+                        return Err(err);
+                    }
+                }
             }
         }
 
@@ -141,6 +145,28 @@ impl SessionManager {
         }
         self.save_state(&state).await?;
         Ok(updated)
+    }
+
+    pub async fn mark_session_dead(&self, session_id: &SessionId) -> Result<()> {
+        let mut state = self.load_state().await?;
+        let Some(record) = state
+            .sessions
+            .iter_mut()
+            .find(|item| &item.id == session_id)
+        else {
+            return Err(ChatMuxXError::SessionNotFound(session_id.0.clone()));
+        };
+
+        record.status = SessionStatus::Dead;
+        record.updated_at = now_string();
+        for binding in state
+            .bindings
+            .iter_mut()
+            .filter(|binding| binding.session_id == *session_id)
+        {
+            binding.active = false;
+        }
+        self.save_state(&state).await
     }
 
     pub async fn send_text(&self, session_id: &SessionId, text: &str) -> Result<()> {
