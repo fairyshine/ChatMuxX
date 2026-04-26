@@ -20,6 +20,7 @@ use crate::{
         accounts::{AccountState, WeChatAccountRecord},
         atomic::{load_json_or_default, save_json},
         files::{ensure_state_dir, StatePaths},
+        history::{append_history, recent_outbound_texts, HistoryEvent},
         monitor::{MonitorSessionState, MonitorSourceState, MonitorState},
         sessions::{
             AppState, BindingRecord, ChannelType, ConversationKind, ConversationRecord, OwnerId,
@@ -29,6 +30,8 @@ use crate::{
     tmux::TmuxKey,
     ChatMuxXError, Result,
 };
+
+const DISPLAY_FLUSH_INTERVAL_MS: u64 = 3_000;
 
 #[derive(Clone, Debug)]
 struct InboundWeChatText {
@@ -229,8 +232,7 @@ async fn handle_wechat_text(
         }
         ParsedInbound::ProviderSlashCommand(text) | ParsedInbound::PlainText(text) => {
             if let Some(session_id) = active_session_id(paths, &event.conversation_id).await? {
-                manager.send_text(&session_id, &text).await?;
-                manager.send_key(&session_id, TmuxKey::Enter).await?;
+                manager.send_text_and_enter(&session_id, &text).await?;
             } else {
                 send_wechat_reply(
                     paths,
@@ -445,6 +447,7 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
     let state: AppState = load_json_or_default(&paths.state).await?;
     let mut monitor: MonitorState = load_json_or_default(&paths.monitor_state).await?;
     monitor.schema_version = 1;
+    let now_ms = now_millis();
 
     for binding in state.bindings.iter().filter(|binding| binding.active) {
         let Some(session) = state.sessions.iter().find(|session| {
@@ -476,60 +479,86 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
         }
         let hash = hash_text(&pane);
         let previous_monitor = monitor.sessions.get(&session.id);
-        if previous_monitor.and_then(|state| state.last_pane_hash.as_deref()) == Some(hash.as_str())
-        {
-            continue;
-        }
-        let previous_text = previous_monitor.and_then(|state| state.last_pane_text.as_deref());
-        let footer_text = extract_terminal_footer(&pane, session.provider);
-        let previous_footer = previous_monitor.and_then(|state| state.last_footer_text.as_deref());
-        let Some(delta) = pane_delta(previous_text, &pane, session.provider) else {
-            monitor.sessions.insert(
-                session.id.clone(),
-                monitor_session_state(
-                    session.provider,
-                    Some(hash),
-                    Some(pane),
-                    previous_monitor.and_then(|state| state.last_status_text.clone()),
-                    previous_footer.map(str::to_owned),
-                ),
-            );
-            continue;
-        };
-        let status_for_state = footer_text
-            .as_deref()
-            .and_then(|footer| extract_footer_value(footer, "状态"));
-        let (delta, sent_footer) = append_terminal_footer(delta, footer_text, previous_footer);
-
-        monitor.sessions.insert(
-            session.id.clone(),
-            monitor_session_state(
-                session.provider,
-                Some(hash),
-                Some(pane),
-                status_for_state,
-                sent_footer,
-            ),
+        let mut next_monitor = monitor_session_state_from_previous(
+            previous_monitor,
+            session.provider,
+            Some(hash.clone()),
+            Some(pane.clone()),
         );
+
+        let pane_changed = previous_monitor.and_then(|state| state.last_pane_hash.as_deref())
+            != Some(hash.as_str());
+        if pane_changed {
+            let previous_text = previous_monitor.and_then(|state| state.last_pane_text.as_deref());
+            let footer_text = extract_terminal_footer(&pane, session.provider);
+            if let Some(raw_delta) = pane_delta(previous_text, &pane, ProviderKind::Shell) {
+                append_history(
+                    &paths.history,
+                    HistoryEvent::ProviderOutput {
+                        session_id: session.id.clone(),
+                        text: raw_delta,
+                        at: now_string(),
+                    },
+                )
+                .await?;
+            }
+
+            if let Some(delta) = pane_delta(previous_text, &pane, session.provider) {
+                next_monitor.pending_display_text =
+                    merge_pending_text(next_monitor.pending_display_text.take(), &delta);
+                if next_monitor.pending_since_ms.is_none() {
+                    next_monitor.pending_since_ms = Some(now_ms);
+                }
+                if footer_text.is_some() {
+                    next_monitor.pending_footer_text = footer_text.clone();
+                }
+                next_monitor.last_status_text = footer_text
+                    .as_deref()
+                    .and_then(|footer| extract_footer_value(footer, "状态"))
+                    .or(next_monitor.last_status_text);
+            }
+        }
+
+        let delivery = if should_flush_pending(&next_monitor, now_ms) {
+            let body = next_monitor.pending_display_text.take().unwrap_or_default();
+            let footer = footer_to_send(
+                next_monitor.pending_footer_text.as_deref(),
+                next_monitor.last_footer_text.as_deref(),
+            );
+            let message = format_display_message(body, footer.as_deref());
+            if footer.is_some() {
+                next_monitor.last_footer_text = footer;
+            }
+            next_monitor.pending_footer_text = None;
+            next_monitor.pending_since_ms = None;
+            next_monitor.last_delivery_at_ms = Some(now_ms);
+            Some(message)
+        } else {
+            None
+        };
 
         if let Some(conversation) = state
             .conversations
             .iter()
             .find(|conversation| conversation.id == binding.conversation_id)
         {
-            send_wechat_reply(paths, &conversation.account_id, &conversation.id, &delta).await?;
+            if let Some(message) = delivery {
+                send_wechat_reply(paths, &conversation.account_id, &conversation.id, &message)
+                    .await?;
+            }
         }
+
+        monitor.sessions.insert(session.id.clone(), next_monitor);
     }
 
     save_json(&paths.monitor_state, &monitor).await
 }
 
-fn monitor_session_state(
+fn monitor_session_state_from_previous(
+    previous: Option<&MonitorSessionState>,
     provider: ProviderKind,
     last_pane_hash: Option<String>,
     last_pane_text: Option<String>,
-    last_status_text: Option<String>,
-    last_footer_text: Option<String>,
 ) -> MonitorSessionState {
     MonitorSessionState {
         provider,
@@ -541,8 +570,12 @@ fn monitor_session_state(
         }),
         last_pane_hash,
         last_pane_text,
-        last_status_text,
-        last_footer_text,
+        last_status_text: previous.and_then(|state| state.last_status_text.clone()),
+        last_footer_text: previous.and_then(|state| state.last_footer_text.clone()),
+        pending_display_text: previous.and_then(|state| state.pending_display_text.clone()),
+        pending_footer_text: previous.and_then(|state| state.pending_footer_text.clone()),
+        pending_since_ms: previous.and_then(|state| state.pending_since_ms),
+        last_delivery_at_ms: previous.and_then(|state| state.last_delivery_at_ms),
     }
 }
 
@@ -576,7 +609,14 @@ async fn send_wechat_reply(
         .ok_or_else(|| ChatMuxXError::WeChatMissingContextToken(conversation_id.to_owned()))?;
 
     let client = WeChatClient::new(&account.base_url);
-    for part in split_for_chat(text) {
+    let mut recent = recent_outbound_texts(&paths.history, conversation_id, 20).await?;
+    let Some(text) = suppress_recent_outbound_text(text, &recent) else {
+        return Ok(());
+    };
+    for part in split_for_chat(&text) {
+        if is_redundant_outbound(&part, &recent) {
+            continue;
+        }
         client
             .send_text(
                 &account.bot_token,
@@ -585,6 +625,16 @@ async fn send_wechat_reply(
                 context_token,
             )
             .await?;
+        recent.insert(0, part.clone());
+        append_history(
+            &paths.history,
+            HistoryEvent::OutboundText {
+                conversation_id: conversation_id.to_owned(),
+                text: part,
+                at: now_string(),
+            },
+        )
+        .await?;
     }
     Ok(())
 }
@@ -696,6 +746,189 @@ fn split_for_chat(text: &str) -> Vec<String> {
     parts
 }
 
+fn is_redundant_outbound(candidate: &str, recent: &[String]) -> bool {
+    let candidate = normalize_for_history_dedupe(candidate);
+    if candidate.is_empty() {
+        return true;
+    }
+
+    recent.iter().any(|previous| {
+        let previous = normalize_for_history_dedupe(previous);
+        previous == candidate
+            || previous.contains(&candidate)
+            || (candidate.contains(&previous) && previous.chars().count() > 80)
+    })
+}
+
+fn suppress_recent_outbound_text(candidate: &str, recent: &[String]) -> Option<String> {
+    let mut text = candidate.trim_matches('\n').trim_end().to_owned();
+    for previous in recent {
+        let next = remove_recent_overlap(&text, previous);
+        if normalize_for_history_dedupe(&next).is_empty() {
+            return None;
+        }
+        text = next;
+    }
+
+    Some(text)
+}
+
+fn remove_recent_overlap(candidate: &str, previous: &str) -> String {
+    let candidate_lines = normalized_history_lines(candidate);
+    let previous_lines = normalized_history_lines(previous);
+    if candidate_lines.is_empty() || previous_lines.is_empty() {
+        return candidate.trim_matches('\n').trim_end().to_owned();
+    }
+
+    if contains_line_window(&previous_lines, &candidate_lines) {
+        return String::new();
+    }
+
+    if let Some(start) = find_line_window(&candidate_lines, &previous_lines) {
+        let mut kept = Vec::new();
+        kept.extend(candidate_lines[..start].iter().cloned());
+        kept.extend(
+            candidate_lines[start + previous_lines.len()..]
+                .iter()
+                .cloned(),
+        );
+        return kept.join("\n");
+    }
+
+    let max_overlap = candidate_lines.len().min(previous_lines.len());
+    for overlap in (1..=max_overlap).rev() {
+        if previous_lines[previous_lines.len() - overlap..] == candidate_lines[..overlap] {
+            return candidate_lines[overlap..].join("\n");
+        }
+    }
+
+    for prefix_len in (1..candidate_lines.len()).rev() {
+        if contains_line_window(&previous_lines, &candidate_lines[..prefix_len]) {
+            return candidate_lines[prefix_len..].join("\n");
+        }
+    }
+
+    candidate.trim_matches('\n').trim_end().to_owned()
+}
+
+fn normalized_history_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn contains_line_window(haystack: &[String], needle: &[String]) -> bool {
+    find_line_window(haystack, needle).is_some()
+}
+
+fn find_line_window(haystack: &[String], needle: &[String]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn merge_pending_text(previous: Option<String>, delta: &str) -> Option<String> {
+    let delta = delta.trim_matches('\n').trim_end();
+    if delta.trim().is_empty() {
+        return previous;
+    }
+
+    let Some(previous) = previous.filter(|text| !text.trim().is_empty()) else {
+        return Some(delta.to_owned());
+    };
+
+    Some(merge_overlapping_text(&previous, delta))
+}
+
+fn merge_overlapping_text(previous: &str, next: &str) -> String {
+    let previous = previous.trim_matches('\n').trim_end();
+    let next = next.trim_matches('\n').trim_end();
+
+    if previous.is_empty() {
+        return next.to_owned();
+    }
+    if next.is_empty() || previous == next || previous.contains(next) {
+        return previous.to_owned();
+    }
+    if next.contains(previous) {
+        return next.to_owned();
+    }
+
+    let previous_lines = previous.lines().collect::<Vec<_>>();
+    let next_lines = next.lines().collect::<Vec<_>>();
+    let max_overlap = previous_lines.len().min(next_lines.len());
+    for overlap in (1..=max_overlap).rev() {
+        if previous_lines[previous_lines.len() - overlap..] == next_lines[..overlap] {
+            let suffix = next_lines[overlap..].join("\n");
+            if suffix.trim().is_empty() {
+                return previous.to_owned();
+            }
+            return format!("{previous}\n{suffix}");
+        }
+    }
+
+    let previous_chars = previous.chars().collect::<Vec<_>>();
+    let next_chars = next.chars().collect::<Vec<_>>();
+    let max_char_overlap = previous_chars.len().min(next_chars.len()).min(500);
+    for overlap in (20..=max_char_overlap).rev() {
+        if previous_chars[previous_chars.len() - overlap..] == next_chars[..overlap] {
+            let suffix = next_chars[overlap..].iter().collect::<String>();
+            if suffix.trim().is_empty() {
+                return previous.to_owned();
+            }
+            return format!("{previous}{suffix}");
+        }
+    }
+
+    format!("{previous}\n{next}")
+}
+
+fn should_flush_pending(state: &MonitorSessionState, now_ms: u64) -> bool {
+    if state
+        .pending_display_text
+        .as_deref()
+        .is_none_or(|text| text.trim().is_empty())
+    {
+        return false;
+    }
+
+    state.pending_since_ms.is_some_and(|pending_since| {
+        now_ms.saturating_sub(pending_since) >= DISPLAY_FLUSH_INTERVAL_MS
+    })
+}
+
+fn footer_to_send(pending_footer: Option<&str>, last_footer: Option<&str>) -> Option<String> {
+    let footer = pending_footer?.trim();
+    if footer.is_empty() || Some(footer) == last_footer {
+        None
+    } else {
+        Some(footer.to_owned())
+    }
+}
+
+fn format_display_message(body: String, footer: Option<&str>) -> String {
+    let body = body.trim_matches('\n').trim_end();
+    match footer.map(str::trim).filter(|footer| !footer.is_empty()) {
+        Some(footer) if !body.is_empty() => format!("{body}\n\n——\n{footer}"),
+        Some(footer) => footer.to_owned(),
+        None => body.to_owned(),
+    }
+}
+
+fn normalize_for_history_dedupe(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn trim_for_chat(text: &str) -> String {
     const MAX_LINES: usize = 60;
     let lines = text.lines().collect::<Vec<_>>();
@@ -733,21 +966,6 @@ fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> 
     Some(current)
 }
 
-fn append_terminal_footer(
-    text: String,
-    footer: Option<String>,
-    previous_footer: Option<&str>,
-) -> (String, Option<String>) {
-    let Some(footer) = footer else {
-        return (text, previous_footer.map(str::to_owned));
-    };
-    if previous_footer == Some(footer.as_str()) {
-        return (text, Some(footer));
-    }
-
-    (format!("{text}\n\n——\n{footer}"), Some(footer))
-}
-
 fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
     let raw_lines = text
         .lines()
@@ -760,6 +978,7 @@ fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
         .filter_map(|(index, line)| match provider {
             ProviderKind::Codex | ProviderKind::Claude
                 if is_noisy_agent_status_line(line)
+                    || is_noisy_agent_ui_line(line)
                     || (index >= footer_start && is_terminal_footer_line(line)) =>
             {
                 None
@@ -775,19 +994,19 @@ fn extract_terminal_footer(text: &str, provider: ProviderKind) -> Option<String>
         ProviderKind::Shell => None,
         ProviderKind::Codex | ProviderKind::Claude => {
             let status = extract_provider_status(text, provider);
-            let model = extract_provider_model(text, provider);
-            format_terminal_footer(status.as_deref(), model.as_deref())
+            let context = extract_provider_footer_context(text, provider);
+            format_terminal_footer(status.as_deref(), context.as_deref())
         }
     }
 }
 
-fn format_terminal_footer(status: Option<&str>, model: Option<&str>) -> Option<String> {
+fn format_terminal_footer(status: Option<&str>, context: Option<&str>) -> Option<String> {
     let mut parts = Vec::new();
     if let Some(status) = status.filter(|value| !value.trim().is_empty()) {
         parts.push(format!("状态：{}", status.trim()));
     }
-    if let Some(model) = model.filter(|value| !value.trim().is_empty()) {
-        parts.push(format!("模型：{}", model.trim()));
+    if let Some(context) = context.filter(|value| !value.trim().is_empty()) {
+        parts.push(context.trim().to_owned());
     }
 
     if parts.is_empty() {
@@ -819,15 +1038,39 @@ fn extract_provider_status(text: &str, provider: ProviderKind) -> Option<String>
     }
 }
 
-fn extract_provider_model(text: &str, provider: ProviderKind) -> Option<String> {
+fn extract_provider_footer_context(text: &str, provider: ProviderKind) -> Option<String> {
     match provider {
         ProviderKind::Shell => None,
         ProviderKind::Codex | ProviderKind::Claude => text
             .lines()
             .rev()
             .take(12)
-            .find_map(extract_model_from_line),
+            .find_map(extract_footer_context_from_line),
     }
+}
+
+fn extract_footer_context_from_line(line: &str) -> Option<String> {
+    let cleaned = clean_footer_line(line);
+    if cleaned.is_empty() {
+        return None;
+    }
+    if cleaned.contains('·') && contains_model_token(&cleaned) {
+        return Some(cleaned);
+    }
+
+    extract_model_from_line(&cleaned)
+}
+
+fn clean_footer_line(line: &str) -> String {
+    line.trim()
+        .trim_matches(|ch: char| {
+            matches!(
+                ch,
+                '│' | '┃' | '┆' | '┊' | '║' | '╎' | '╏' | '─' | '━' | ' ' | '\t'
+            )
+        })
+        .trim()
+        .to_owned()
 }
 
 fn extract_model_from_line(line: &str) -> Option<String> {
@@ -868,6 +1111,13 @@ fn is_model_token(lower: &str) -> bool {
         || lower.contains("sonnet")
         || lower.contains("opus")
         || lower.contains("haiku")
+}
+
+fn contains_model_token(text: &str) -> bool {
+    text.split(|ch: char| ch.is_whitespace() || matches!(ch, '|' | '│' | '·' | ',' | ';'))
+        .map(clean_model_token)
+        .map(str::to_ascii_lowercase)
+        .any(|token| is_model_token(&token))
 }
 
 fn is_terminal_footer_line(line: &str) -> bool {
@@ -918,6 +1168,20 @@ fn is_noisy_agent_status_line(line: &str) -> bool {
         || trimmed.eq_ignore_ascii_case("working")
 }
 
+fn is_noisy_agent_ui_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("› ")
+        || trimmed == "›"
+        || trimmed.starts_with("• Working")
+        || trimmed.starts_with("• Thinking")
+        || trimmed.contains("esc to interrupt")
+        || trimmed.contains("ctrl + t to view transcript")
+        || trimmed.starts_with("⚠ Model metadata")
+        || trimmed
+            .chars()
+            .all(|ch| matches!(ch, '─' | '━' | '-' | ' '))
+}
+
 fn non_empty_delta(delta: &str) -> Option<String> {
     let delta = delta.trim_matches('\n').trim_end();
     if delta.trim().is_empty() {
@@ -953,6 +1217,15 @@ fn now_string() -> String {
         .unwrap_or_default()
         .as_secs()
         .to_string()
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
@@ -1012,30 +1285,77 @@ mod tests {
     }
 
     #[test]
-    fn footer_is_appended_once_when_changed() {
-        let (text, footer) = append_terminal_footer(
-            "done".to_owned(),
-            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned()),
-            Some("状态：running · 模型：gpt-5.1-codex"),
+    fn codex_pane_normalization_filters_prompt_echo_and_ui_hints() {
+        let text = normalize_pane_text(
+            "answer\n› user prompt\n• Working (1s • esc to interrupt)\n› Use /skills to list available skills",
+            ProviderKind::Codex,
         );
 
-        assert_eq!(text, "done\n\n——\n状态：thinking · 模型：gpt-5.1-codex");
-        assert_eq!(
-            footer,
-            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned())
-        );
+        assert_eq!(text, "answer");
     }
 
     #[test]
-    fn footer_is_not_repeated_when_unchanged() {
-        let (text, footer) = append_terminal_footer(
-            "more".to_owned(),
-            Some("状态：thinking".to_owned()),
-            Some("状态：thinking"),
+    fn footer_is_added_to_display_message() {
+        let text = format_display_message(
+            "done".to_owned(),
+            Some("状态：thinking · 模型：gpt-5.1-codex"),
         );
 
-        assert_eq!(text, "more");
-        assert_eq!(footer, Some("状态：thinking".to_owned()));
+        assert_eq!(text, "done\n\n——\n状态：thinking · 模型：gpt-5.1-codex");
+    }
+
+    #[test]
+    fn unchanged_footer_is_not_selected_for_sending() {
+        let footer = footer_to_send(Some("状态：thinking"), Some("状态：thinking"));
+
+        assert_eq!(footer, None);
+    }
+
+    #[test]
+    fn pending_text_waits_for_flush_interval() {
+        let state = MonitorSessionState {
+            provider: ProviderKind::Codex,
+            source: None,
+            last_pane_hash: None,
+            last_pane_text: None,
+            last_status_text: None,
+            last_footer_text: None,
+            pending_display_text: Some("hello".to_owned()),
+            pending_footer_text: None,
+            pending_since_ms: Some(1_000),
+            last_delivery_at_ms: None,
+        };
+
+        assert!(!should_flush_pending(&state, 3_999));
+        assert!(should_flush_pending(&state, 4_000));
+    }
+
+    #[test]
+    fn pending_text_appends_with_newline() {
+        let pending = merge_pending_text(Some("one".to_owned()), "two");
+
+        assert_eq!(pending, Some("one\ntwo".to_owned()));
+    }
+
+    #[test]
+    fn pending_text_drops_contained_duplicate() {
+        let pending = merge_pending_text(Some("alpha\nbeta\ngamma".to_owned()), "beta\ngamma");
+
+        assert_eq!(pending, Some("alpha\nbeta\ngamma".to_owned()));
+    }
+
+    #[test]
+    fn pending_text_merges_line_overlap() {
+        let pending = merge_pending_text(Some("alpha\nbeta".to_owned()), "beta\ngamma");
+
+        assert_eq!(pending, Some("alpha\nbeta\ngamma".to_owned()));
+    }
+
+    #[test]
+    fn pending_text_replaces_when_next_contains_previous() {
+        let pending = merge_pending_text(Some("beta".to_owned()), "alpha\nbeta\ngamma");
+
+        assert_eq!(pending, Some("alpha\nbeta\ngamma".to_owned()));
     }
 
     #[test]
@@ -1052,9 +1372,29 @@ mod tests {
             ProviderKind::Codex,
         );
 
+        assert_eq!(footer, Some("状态：thinking · gpt-5.1-codex".to_owned()));
+    }
+
+    #[test]
+    fn terminal_footer_keeps_codex_bottom_bar_context() {
+        let footer = extract_terminal_footer(
+            "answer\n\n› Use /skills to list available skills\n\n  gpt-5.5 high · ~/Code/ChatMuxX",
+            ProviderKind::Codex,
+        );
+
+        assert_eq!(footer, Some("gpt-5.5 high · ~/Code/ChatMuxX".to_owned()));
+    }
+
+    #[test]
+    fn terminal_footer_includes_status_and_bottom_bar_context() {
+        let footer = extract_terminal_footer(
+            "answer\n⠋ thinking\n  gpt-5.5 high · ~/Code/ChatMuxX",
+            ProviderKind::Codex,
+        );
+
         assert_eq!(
             footer,
-            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned())
+            Some("状态：thinking · gpt-5.5 high · ~/Code/ChatMuxX".to_owned())
         );
     }
 
@@ -1063,5 +1403,51 @@ mod tests {
         let text = normalize_pane_text("answer\nmodel: gpt-5.1-codex", ProviderKind::Codex);
 
         assert_eq!(text, "answer");
+    }
+
+    #[test]
+    fn redundant_outbound_detects_exact_recent_message() {
+        assert!(is_redundant_outbound(
+            "hello\nworld",
+            &[" hello \n\n world ".to_owned()]
+        ));
+    }
+
+    #[test]
+    fn redundant_outbound_detects_candidate_inside_recent_message() {
+        assert!(is_redundant_outbound(
+            "world",
+            &["hello\nworld\nagain".to_owned()]
+        ));
+    }
+
+    #[test]
+    fn redundant_outbound_allows_new_text() {
+        assert!(!is_redundant_outbound(
+            "new output",
+            &["old output".to_owned()]
+        ));
+    }
+
+    #[test]
+    fn recent_outbound_suppression_keeps_only_suffix_after_previous_message() {
+        let text = suppress_recent_outbound_text("alpha\nbeta\ngamma", &["alpha\nbeta".to_owned()]);
+
+        assert_eq!(text, Some("gamma".to_owned()));
+    }
+
+    #[test]
+    fn recent_outbound_suppression_drops_fully_repeated_message() {
+        let text = suppress_recent_outbound_text("alpha\nbeta", &["alpha\nbeta\ngamma".to_owned()]);
+
+        assert_eq!(text, None);
+    }
+
+    #[test]
+    fn recent_outbound_suppression_removes_scrolled_overlap() {
+        let text =
+            suppress_recent_outbound_text("beta\ngamma\ndelta", &["alpha\nbeta\ngamma".to_owned()]);
+
+        assert_eq!(text, Some("delta".to_owned()));
     }
 }

@@ -48,6 +48,11 @@ pub enum HistoryEvent {
         command: String,
         at: String,
     },
+    OutboundText {
+        conversation_id: String,
+        text: String,
+        at: String,
+    },
 }
 
 impl HistoryEvent {
@@ -91,6 +96,15 @@ impl HistoryEvent {
                 command: redact_text(&command),
                 at,
             },
+            Self::OutboundText {
+                conversation_id,
+                text,
+                at,
+            } => Self::OutboundText {
+                conversation_id,
+                text: redact_text(&text),
+                at,
+            },
         }
     }
 }
@@ -126,6 +140,46 @@ pub async fn append_history(path: &Path, event: HistoryEvent) -> Result<()> {
     use tokio::io::AsyncWriteExt;
     file.write_all(&bytes).await.at(path)?;
     file.flush().await.at(path)
+}
+
+pub async fn recent_outbound_texts(
+    path: &Path,
+    conversation_id: &str,
+    limit: usize,
+) -> Result<Vec<String>> {
+    let text = match tokio::fs::read_to_string(path).await {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(crate::ChatMuxXError::Io {
+                path: path.to_path_buf(),
+                source: err,
+            })
+        }
+    };
+
+    let mut messages = Vec::new();
+    for line in text.lines().rev() {
+        let Ok(line) = serde_json::from_str::<HistoryLine>(line) else {
+            continue;
+        };
+        let HistoryEvent::OutboundText {
+            conversation_id: event_conversation_id,
+            text,
+            ..
+        } = line.event
+        else {
+            continue;
+        };
+        if event_conversation_id == conversation_id {
+            messages.push(text);
+            if messages.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    Ok(messages)
 }
 
 fn redact_text(text: &str) -> String {

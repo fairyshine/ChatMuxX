@@ -9,7 +9,6 @@ use crate::{
         files::{ensure_state_dir, StatePaths},
         sessions::{OwnerId, SessionId},
     },
-    tmux::TmuxKey,
     ChatMuxXError, Result,
 };
 
@@ -84,9 +83,10 @@ pub async fn send(session_id: String, text: String, enter: bool) -> Result<()> {
     let manager = SessionManager::new(config, paths);
     let session_id = SessionId(session_id);
 
-    manager.send_text(&session_id, &text).await?;
     if enter {
-        manager.send_key(&session_id, TmuxKey::Enter).await?;
+        manager.send_text_and_enter(&session_id, &text).await?;
+    } else {
+        manager.send_text(&session_id, &text).await?;
     }
 
     println!("sent text to {}", session_id.0);

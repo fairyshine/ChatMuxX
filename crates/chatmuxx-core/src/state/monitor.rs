@@ -24,6 +24,14 @@ pub struct MonitorSessionState {
     pub last_status_text: Option<String>,
     #[serde(default)]
     pub last_footer_text: Option<String>,
+    #[serde(default)]
+    pub pending_display_text: Option<String>,
+    #[serde(default)]
+    pub pending_footer_text: Option<String>,
+    #[serde(default)]
+    pub pending_since_ms: Option<u64>,
+    #[serde(default)]
+    pub last_delivery_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

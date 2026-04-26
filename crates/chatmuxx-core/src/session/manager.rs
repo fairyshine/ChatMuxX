@@ -175,6 +175,14 @@ impl SessionManager {
         self.tmux.send_text(pane_id, text).await
     }
 
+    pub async fn send_text_and_enter(&self, session_id: &SessionId, text: &str) -> Result<()> {
+        let record = self.session_record(session_id).await?;
+        let pane_id = pane_id(&record)?;
+        self.tmux.send_text(pane_id, text).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        self.tmux.send_key(pane_id, TmuxKey::Enter).await
+    }
+
     pub async fn send_key(&self, session_id: &SessionId, key: TmuxKey) -> Result<()> {
         let record = self.session_record(session_id).await?;
         let pane_id = pane_id(&record)?;

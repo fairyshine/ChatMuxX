@@ -31,7 +31,7 @@ pub enum TmuxKey {
 impl TmuxKey {
     pub(crate) fn as_tmux_key(self) -> &'static str {
         match self {
-            Self::Enter => "C-m",
+            Self::Enter => "Enter",
             Self::Escape => "Escape",
             Self::CtrlC => "C-c",
             Self::Tab => "Tab",
@@ -44,7 +44,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn enter_uses_carriage_return_for_tui_submission() {
-        assert_eq!(TmuxKey::Enter.as_tmux_key(), "C-m");
+    fn enter_uses_named_tmux_key_for_tui_submission() {
+        assert_eq!(TmuxKey::Enter.as_tmux_key(), "Enter");
     }
 }
