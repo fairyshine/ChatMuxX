@@ -127,6 +127,7 @@ async fn wechat_poll_loop(
                     if let Some(event) =
                         persist_inbound_message(&paths, &mut accounts, &account, &message).await?
                     {
+                        save_json(&paths.accounts, &accounts).await?;
                         if tx.send(event).await.is_err() {
                             return Ok(());
                         }
@@ -474,26 +475,41 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
             continue;
         }
         let hash = hash_text(&pane);
-        let last_hash = monitor
-            .sessions
-            .get(&session.id)
-            .and_then(|state| state.last_pane_hash.as_deref());
-        if last_hash == Some(hash.as_str()) {
+        let previous_monitor = monitor.sessions.get(&session.id);
+        if previous_monitor.and_then(|state| state.last_pane_hash.as_deref()) == Some(hash.as_str())
+        {
             continue;
         }
+        let previous_text = previous_monitor.and_then(|state| state.last_pane_text.as_deref());
+        let footer_text = extract_terminal_footer(&pane, session.provider);
+        let previous_footer = previous_monitor.and_then(|state| state.last_footer_text.as_deref());
+        let Some(delta) = pane_delta(previous_text, &pane, session.provider) else {
+            monitor.sessions.insert(
+                session.id.clone(),
+                monitor_session_state(
+                    session.provider,
+                    Some(hash),
+                    Some(pane),
+                    previous_monitor.and_then(|state| state.last_status_text.clone()),
+                    previous_footer.map(str::to_owned),
+                ),
+            );
+            continue;
+        };
+        let status_for_state = footer_text
+            .as_deref()
+            .and_then(|footer| extract_footer_value(footer, "状态"));
+        let (delta, sent_footer) = append_terminal_footer(delta, footer_text, previous_footer);
 
         monitor.sessions.insert(
             session.id.clone(),
-            MonitorSessionState {
-                provider: session.provider,
-                source: Some(MonitorSourceState {
-                    kind: crate::provider::OutputSourceKind::TmuxPane,
-                    path: None,
-                    offset: None,
-                    last_seen_id: None,
-                }),
-                last_pane_hash: Some(hash),
-            },
+            monitor_session_state(
+                session.provider,
+                Some(hash),
+                Some(pane),
+                status_for_state,
+                sent_footer,
+            ),
         );
 
         if let Some(conversation) = state
@@ -501,11 +517,33 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
             .iter()
             .find(|conversation| conversation.id == binding.conversation_id)
         {
-            send_wechat_reply(paths, &conversation.account_id, &conversation.id, &pane).await?;
+            send_wechat_reply(paths, &conversation.account_id, &conversation.id, &delta).await?;
         }
     }
 
     save_json(&paths.monitor_state, &monitor).await
+}
+
+fn monitor_session_state(
+    provider: ProviderKind,
+    last_pane_hash: Option<String>,
+    last_pane_text: Option<String>,
+    last_status_text: Option<String>,
+    last_footer_text: Option<String>,
+) -> MonitorSessionState {
+    MonitorSessionState {
+        provider,
+        source: Some(MonitorSourceState {
+            kind: crate::provider::OutputSourceKind::TmuxPane,
+            path: None,
+            offset: None,
+            last_seen_id: None,
+        }),
+        last_pane_hash,
+        last_pane_text,
+        last_status_text,
+        last_footer_text,
+    }
 }
 
 async fn send_wechat_reply(
@@ -665,6 +703,230 @@ fn trim_for_chat(text: &str) -> String {
     lines[start..].join("\n")
 }
 
+fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> Option<String> {
+    let current = normalize_pane_text(current, provider);
+    if current.trim().is_empty() {
+        return None;
+    }
+
+    let Some(previous) = previous else {
+        return Some(current);
+    };
+    let previous = normalize_pane_text(previous, provider);
+
+    if current == previous {
+        return None;
+    }
+    if let Some(delta) = current.strip_prefix(&previous) {
+        return non_empty_delta(delta);
+    }
+
+    let previous_lines = previous.lines().collect::<Vec<_>>();
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let max_overlap = previous_lines.len().min(current_lines.len());
+    for overlap in (1..=max_overlap).rev() {
+        if previous_lines[previous_lines.len() - overlap..] == current_lines[..overlap] {
+            return non_empty_delta(&current_lines[overlap..].join("\n"));
+        }
+    }
+
+    Some(current)
+}
+
+fn append_terminal_footer(
+    text: String,
+    footer: Option<String>,
+    previous_footer: Option<&str>,
+) -> (String, Option<String>) {
+    let Some(footer) = footer else {
+        return (text, previous_footer.map(str::to_owned));
+    };
+    if previous_footer == Some(footer.as_str()) {
+        return (text, Some(footer));
+    }
+
+    (format!("{text}\n\n——\n{footer}"), Some(footer))
+}
+
+fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
+    let raw_lines = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    let footer_start = raw_lines.len().saturating_sub(8);
+    let lines = raw_lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| match provider {
+            ProviderKind::Codex | ProviderKind::Claude
+                if is_noisy_agent_status_line(line)
+                    || (index >= footer_start && is_terminal_footer_line(line)) =>
+            {
+                None
+            }
+            _ => Some(*line),
+        })
+        .collect::<Vec<_>>();
+    lines.join("\n")
+}
+
+fn extract_terminal_footer(text: &str, provider: ProviderKind) -> Option<String> {
+    match provider {
+        ProviderKind::Shell => None,
+        ProviderKind::Codex | ProviderKind::Claude => {
+            let status = extract_provider_status(text, provider);
+            let model = extract_provider_model(text, provider);
+            format_terminal_footer(status.as_deref(), model.as_deref())
+        }
+    }
+}
+
+fn format_terminal_footer(status: Option<&str>, model: Option<&str>) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(status) = status.filter(|value| !value.trim().is_empty()) {
+        parts.push(format!("状态：{}", status.trim()));
+    }
+    if let Some(model) = model.filter(|value| !value.trim().is_empty()) {
+        parts.push(format!("模型：{}", model.trim()));
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+fn extract_footer_value(footer: &str, label: &str) -> Option<String> {
+    footer.split('·').find_map(|part| {
+        let part = part.trim();
+        part.strip_prefix(label)
+            .and_then(|value| value.trim().strip_prefix('：').or(Some(value.trim())))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
+}
+
+fn extract_provider_status(text: &str, provider: ProviderKind) -> Option<String> {
+    match provider {
+        ProviderKind::Shell => None,
+        ProviderKind::Codex | ProviderKind::Claude => text
+            .lines()
+            .rev()
+            .find(|line| is_noisy_agent_status_line(line))
+            .and_then(clean_status_line),
+    }
+}
+
+fn extract_provider_model(text: &str, provider: ProviderKind) -> Option<String> {
+    match provider {
+        ProviderKind::Shell => None,
+        ProviderKind::Codex | ProviderKind::Claude => text
+            .lines()
+            .rev()
+            .take(12)
+            .find_map(extract_model_from_line),
+    }
+}
+
+fn extract_model_from_line(line: &str) -> Option<String> {
+    let tokens = line
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, '|' | '│' | '·' | ',' | ';'))
+        .map(clean_model_token)
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+
+    for (index, token) in tokens.iter().enumerate() {
+        let lower = token.to_ascii_lowercase();
+        if lower == "model" || lower == "model:" || lower == "模型" || lower == "模型:" {
+            if let Some(next) = tokens.get(index + 1) {
+                return Some((*next).to_owned());
+            }
+        }
+        if is_model_token(&lower) {
+            return Some((*token).to_owned());
+        }
+    }
+
+    None
+}
+
+fn clean_model_token(token: &str) -> &str {
+    token.trim_matches(|ch: char| {
+        matches!(
+            ch,
+            ':' | '=' | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>' | '"' | '\''
+        )
+    })
+}
+
+fn is_model_token(lower: &str) -> bool {
+    lower.contains("gpt-")
+        || lower.contains("codex")
+        || lower.starts_with("claude-")
+        || lower.contains("sonnet")
+        || lower.contains("opus")
+        || lower.contains("haiku")
+}
+
+fn is_terminal_footer_line(line: &str) -> bool {
+    let lower = line.trim().to_ascii_lowercase();
+    lower.contains("model")
+        || lower.contains("模型")
+        || lower.contains("gpt-")
+        || lower.contains("claude-")
+        || lower.contains("sonnet")
+        || lower.contains("opus")
+        || lower.contains("haiku")
+        || lower.contains("tokens")
+        || lower.contains("context")
+        || lower.contains("上下文")
+}
+
+fn clean_status_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let without_spinner = trimmed
+        .strip_prefix(|ch| {
+            matches!(
+                ch,
+                '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏'
+            )
+        })
+        .unwrap_or(trimmed)
+        .trim();
+    if without_spinner.is_empty() {
+        None
+    } else {
+        Some(without_spinner.to_owned())
+    }
+}
+
+fn is_noisy_agent_status_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("⠋")
+        || trimmed.starts_with("⠙")
+        || trimmed.starts_with("⠹")
+        || trimmed.starts_with("⠸")
+        || trimmed.starts_with("⠼")
+        || trimmed.starts_with("⠴")
+        || trimmed.starts_with("⠦")
+        || trimmed.starts_with("⠧")
+        || trimmed.starts_with("⠇")
+        || trimmed.starts_with("⠏")
+        || trimmed.eq_ignore_ascii_case("thinking")
+        || trimmed.eq_ignore_ascii_case("working")
+}
+
+fn non_empty_delta(delta: &str) -> Option<String> {
+    let delta = delta.trim_matches('\n').trim_end();
+    if delta.trim().is_empty() {
+        None
+    } else {
+        Some(delta.to_owned())
+    }
+}
+
 fn hash_text(text: &str) -> String {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
@@ -715,5 +977,91 @@ mod tests {
 
         assert!(trimmed.starts_with("10\n"));
         assert!(trimmed.ends_with("69"));
+    }
+
+    #[test]
+    fn pane_delta_sends_only_appended_text() {
+        let delta = pane_delta(
+            Some("first\nsecond"),
+            "first\nsecond\nthird",
+            ProviderKind::Codex,
+        );
+
+        assert_eq!(delta, Some("third".to_owned()));
+    }
+
+    #[test]
+    fn pane_delta_handles_scrolled_overlap() {
+        let delta = pane_delta(Some("a\nb\nc"), "b\nc\nd", ProviderKind::Codex);
+
+        assert_eq!(delta, Some("d".to_owned()));
+    }
+
+    #[test]
+    fn pane_delta_suppresses_repeated_text() {
+        let delta = pane_delta(Some("same"), "same", ProviderKind::Codex);
+
+        assert_eq!(delta, None);
+    }
+
+    #[test]
+    fn codex_pane_normalization_filters_spinner_status() {
+        let text = normalize_pane_text("hello\n⠋ thinking\nworld", ProviderKind::Codex);
+
+        assert_eq!(text, "hello\nworld");
+    }
+
+    #[test]
+    fn footer_is_appended_once_when_changed() {
+        let (text, footer) = append_terminal_footer(
+            "done".to_owned(),
+            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned()),
+            Some("状态：running · 模型：gpt-5.1-codex"),
+        );
+
+        assert_eq!(text, "done\n\n——\n状态：thinking · 模型：gpt-5.1-codex");
+        assert_eq!(
+            footer,
+            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned())
+        );
+    }
+
+    #[test]
+    fn footer_is_not_repeated_when_unchanged() {
+        let (text, footer) = append_terminal_footer(
+            "more".to_owned(),
+            Some("状态：thinking".to_owned()),
+            Some("状态：thinking"),
+        );
+
+        assert_eq!(text, "more");
+        assert_eq!(footer, Some("状态：thinking".to_owned()));
+    }
+
+    #[test]
+    fn provider_status_is_extracted_from_spinner_line() {
+        let status = extract_provider_status("hello\n⠋ thinking", ProviderKind::Codex);
+
+        assert_eq!(status, Some("thinking".to_owned()));
+    }
+
+    #[test]
+    fn terminal_footer_includes_status_and_model() {
+        let footer = extract_terminal_footer(
+            "answer\n⠋ thinking\nmodel: gpt-5.1-codex",
+            ProviderKind::Codex,
+        );
+
+        assert_eq!(
+            footer,
+            Some("状态：thinking · 模型：gpt-5.1-codex".to_owned())
+        );
+    }
+
+    #[test]
+    fn pane_normalization_filters_bottom_model_line() {
+        let text = normalize_pane_text("answer\nmodel: gpt-5.1-codex", ProviderKind::Codex);
+
+        assert_eq!(text, "answer");
     }
 }

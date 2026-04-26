@@ -1,5 +1,7 @@
 # ChatMuxX
 
+English | [简体中文](README.zh-CN.md)
+
 ChatMuxX lets you control local tmux windows running Codex, Claude Code, or a shell from mobile chat apps. The current v0.1 path focuses on WeChat through Tencent iLink HTTP and Codex running locally inside tmux.
 
 ChatMuxX is a new Rust implementation. It does not depend on OpenClaw at runtime and does not install or modify Codex/Claude hooks, plugins, skills, or config files.

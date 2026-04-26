@@ -18,6 +18,12 @@ pub struct MonitorSessionState {
     pub provider: ProviderKind,
     pub source: Option<MonitorSourceState>,
     pub last_pane_hash: Option<String>,
+    #[serde(default)]
+    pub last_pane_text: Option<String>,
+    #[serde(default)]
+    pub last_status_text: Option<String>,
+    #[serde(default)]
+    pub last_footer_text: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
