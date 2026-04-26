@@ -73,6 +73,11 @@ impl ProviderConfig {
             env: BTreeMap::new(),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(command: impl Into<String>) -> Self {
+        Self::new(command)
+    }
 }
 
 #[cfg(test)]

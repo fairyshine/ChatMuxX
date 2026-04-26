@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::{
     config::{default_config_path, Config},
     error::{ChatMuxXError, IoContext, Result},
+    state::files::ensure_state_dir,
 };
 
 pub async fn run(path: Option<PathBuf>) -> Result<()> {
@@ -12,7 +13,7 @@ pub async fn run(path: Option<PathBuf>) -> Result<()> {
     }
 
     if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await.at(parent)?;
+        ensure_state_dir(parent).await?;
     }
 
     let config = Config::default();

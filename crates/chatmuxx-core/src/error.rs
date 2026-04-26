@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::provider::ProviderKind;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ChatMuxXError {
     #[error("home directory could not be determined")]
@@ -18,11 +20,55 @@ pub enum ChatMuxXError {
     #[error("failed to serialize TOML config: {0}")]
     TomlSerialize(#[from] toml::ser::Error),
 
+    #[error("failed to serialize JSON at {path}: {source}")]
+    JsonSerialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("failed to parse JSON at {path}: {source}")]
+    JsonDeserialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
     #[error("failed to parse TOML config at {path}: {source}")]
     TomlDeserialize {
         path: PathBuf,
         #[source]
         source: toml::de::Error,
+    },
+
+    #[error("command not found: {0}")]
+    CommandNotFound(String),
+
+    #[error("tmux command failed: {command} ({stderr})")]
+    TmuxCommandFailed { command: String, stderr: String },
+
+    #[error("failed to parse tmux output: {0}")]
+    TmuxParse(String),
+
+    #[error("invalid workspace: {0}")]
+    InvalidWorkspace(PathBuf),
+
+    #[error("unknown provider: {0}")]
+    UnknownProvider(ProviderKind),
+
+    #[error("invalid provider: {0}")]
+    InvalidProvider(String),
+
+    #[error("session not found: {0}")]
+    SessionNotFound(String),
+
+    #[error("session has no tmux attachment: {0}")]
+    SessionNotAttached(String),
+
+    #[error("unsupported launch mode for {provider}: {mode}")]
+    UnsupportedLaunchMode {
+        provider: ProviderKind,
+        mode: &'static str,
     },
 
     #[error("feature is not implemented yet: {0}")]

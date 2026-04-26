@@ -69,8 +69,37 @@ pub struct SessionsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum SessionsCommand {
+    /// Create a managed tmux window for local development/testing.
+    New(SessionsNewArgs),
     /// List known ChatMuxX sessions.
     List,
     /// Close a managed session/window.
     Close { session_id: String },
+    /// Send literal text to a session pane.
+    Send(SessionsSendArgs),
+    /// Capture the current text from a session pane.
+    Capture { session_id: String },
+}
+
+#[derive(Debug, Args)]
+pub struct SessionsNewArgs {
+    /// Workspace directory where the provider should start.
+    pub workspace: PathBuf,
+    /// Provider to start: shell, codex, or claude. Only shell is wired first.
+    #[arg(default_value = "shell")]
+    pub provider: String,
+    /// Extra provider arguments after `--`.
+    #[arg(last = true)]
+    pub extra_args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionsSendArgs {
+    /// ChatMuxX session id.
+    pub session_id: String,
+    /// Literal text to send.
+    pub text: String,
+    /// Press Enter after sending the literal text.
+    #[arg(long)]
+    pub enter: bool,
 }
