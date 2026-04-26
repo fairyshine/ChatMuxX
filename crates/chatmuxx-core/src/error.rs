@@ -65,6 +65,24 @@ pub enum ChatMuxXError {
     #[error("session has no tmux attachment: {0}")]
     SessionNotAttached(String),
 
+    #[error("wechat account is not logged in; run `cmx login wechat`")]
+    WeChatAccountMissing,
+
+    #[error("wechat account expired; run `cmx login wechat` again")]
+    WeChatAccountExpired,
+
+    #[error("wechat context token is missing for conversation: {0}")]
+    WeChatMissingContextToken(String),
+
+    #[error("wechat HTTP request failed with status {status}: {body}")]
+    WeChatHttpStatus { status: u16, body: String },
+
+    #[error("wechat protocol error: {0}")]
+    WeChatProtocol(String),
+
+    #[error("wechat request failed: {0}")]
+    WeChatRequest(#[from] reqwest::Error),
+
     #[error("unsupported launch mode for {provider}: {mode}")]
     UnsupportedLaunchMode {
         provider: ProviderKind,

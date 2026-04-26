@@ -86,6 +86,13 @@ impl SessionManager {
         state.schema_version = 1;
         state.sessions.push(record.clone());
         if let Some(conversation_id) = req.conversation {
+            for binding in state
+                .bindings
+                .iter_mut()
+                .filter(|binding| binding.conversation_id == conversation_id)
+            {
+                binding.active = false;
+            }
             state.bindings.push(BindingRecord {
                 conversation_id,
                 session_id: id,
@@ -125,6 +132,13 @@ impl SessionManager {
         record.status = SessionStatus::Closed;
         record.updated_at = now_string();
         let updated = record.clone();
+        for binding in state
+            .bindings
+            .iter_mut()
+            .filter(|binding| binding.session_id == *session_id)
+        {
+            binding.active = false;
+        }
         self.save_state(&state).await?;
         Ok(updated)
     }

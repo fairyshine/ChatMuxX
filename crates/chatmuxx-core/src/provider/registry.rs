@@ -8,7 +8,7 @@ use crate::{
             OutputSource, ProviderCapabilities, ProviderKind, ProviderLaunchCommand,
             ProviderLaunchRequest,
         },
-        ShellProvider,
+        CodexProvider, ShellProvider,
     },
     ChatMuxXError, Result,
 };
@@ -39,7 +39,10 @@ impl ProviderRegistry {
     }
 
     pub fn from_configs(configs: &ProviderConfigs) -> Self {
-        Self::new([Arc::new(ShellProvider::new(configs.shell.clone())) as Arc<dyn ProviderAdapter>])
+        Self::new([
+            Arc::new(CodexProvider::new(configs.codex.clone())) as Arc<dyn ProviderAdapter>,
+            Arc::new(ShellProvider::new(configs.shell.clone())) as Arc<dyn ProviderAdapter>,
+        ])
     }
 
     pub fn get(&self, kind: ProviderKind) -> Result<Arc<dyn ProviderAdapter>> {
@@ -72,18 +75,25 @@ mod tests {
     fn registry_contains_shell_provider_from_default_config() {
         let registry = ProviderRegistry::from_configs(&ProviderConfigs::default());
 
-        assert_eq!(registry.list(), vec![ProviderKind::Shell]);
+        assert_eq!(
+            registry.list(),
+            vec![ProviderKind::Codex, ProviderKind::Shell]
+        );
         assert_eq!(
             registry.get(ProviderKind::Shell).unwrap().kind(),
             ProviderKind::Shell
+        );
+        assert_eq!(
+            registry.get(ProviderKind::Codex).unwrap().kind(),
+            ProviderKind::Codex
         );
     }
 
     #[test]
     fn registry_rejects_unregistered_provider() {
         let registry = ProviderRegistry::from_configs(&ProviderConfigs::default());
-        let Err(err) = registry.get(ProviderKind::Codex) else {
-            panic!("codex should not be registered yet");
+        let Err(err) = registry.get(ProviderKind::Claude) else {
+            panic!("claude should not be registered yet");
         };
 
         assert!(err.to_string().contains("unknown provider"));
