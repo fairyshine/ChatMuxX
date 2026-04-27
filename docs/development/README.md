@@ -13,6 +13,7 @@ Status: draft for v0.1 implementation planning.
 - [implementation-plan.md](implementation-plan.md): v0.1 分阶段开发任务和验收点。
 - [task-index.md](task-index.md): 可直接开工的任务顺序索引。
 - [testing-strategy.md](testing-strategy.md): 单元测试、集成测试、假 iLink server、tmux 测试策略。
+- [release.md](release.md): 统一版本号、GitHub Actions 和 tag release 流程。
 - [reference-projects.md](reference-projects.md): 参考项目和本地 reference 目录说明。
 
 ## v0.1 Implementation Goal
