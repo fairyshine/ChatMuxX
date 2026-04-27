@@ -283,7 +283,7 @@ fn looks_like_path_only(text: &str) -> bool {
         && (text.starts_with('/') || text.starts_with("~/") || text.contains("/"))
 }
 
-fn is_mostly_ui_symbols(text: &str) -> bool {
+pub(super) fn is_mostly_ui_symbols(text: &str) -> bool {
     let chars = text.chars().filter(|ch| !ch.is_whitespace()).count();
     if chars == 0 {
         return false;
@@ -388,6 +388,60 @@ fn is_inline_ui_hint_line(line: &str) -> bool {
     line.chars().count() <= 160
         && (lower.contains("ctrl") || lower.contains("interrupt"))
         && (lower.contains("+") || lower.contains("to ") || lower.contains("interrupt"))
+}
+
+pub(super) fn strip_inline_control_hints(text: &str) -> String {
+    strip_parenthesized_segments(text, parenthesized_segment_is_ui_chrome)
+}
+
+pub(super) fn contains_control_hint(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("ctrl") || lower.contains("esc") || lower.contains("interrupt")
+}
+
+pub(super) fn contains_prompt_marker(text: &str) -> bool {
+    text.contains(" › ") || text.contains(" ❯ ")
+}
+
+pub(super) fn looks_like_ascii_status_label(text: &str) -> bool {
+    let label = text
+        .split(['(', '·', '›', '❯'])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches(['•', '-', '*'])
+        .trim();
+
+    !label.is_empty()
+        && label.chars().count() <= 32
+        && label
+            .chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch.is_whitespace())
+}
+
+fn strip_parenthesized_segments(text: &str, should_strip: impl Fn(&str) -> bool) -> String {
+    let mut output = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('(') {
+        let Some(end) = rest[start..].find(')') else {
+            break;
+        };
+        let end = start + end + 1;
+        let candidate = &rest[start..end];
+        if should_strip(candidate) {
+            output.push_str(&rest[..start]);
+            rest = &rest[end..];
+        } else {
+            output.push_str(&rest[..end]);
+            rest = &rest[end..];
+        }
+    }
+    output.push_str(rest);
+    output.trim_end().to_owned()
+}
+
+fn parenthesized_segment_is_ui_chrome(text: &str) -> bool {
+    contains_control_hint(text) && !text.trim_matches(['(', ')']).trim().eq_ignore_ascii_case("esc")
 }
 
 pub(super) fn clean_selected_option_or_line(line: &str) -> Option<String> {

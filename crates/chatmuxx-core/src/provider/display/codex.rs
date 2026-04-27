@@ -1,7 +1,8 @@
 use super::{
-    clean_selected_option_or_line, clean_status_line, is_spinner_status_line,
-    looks_like_numbered_option, normalize_agent_pane_text, split_inline_separators,
-    strip_standalone_prompt_markers,
+    clean_selected_option_or_line, clean_status_line, contains_control_hint, contains_prompt_marker,
+    is_spinner_status_line,
+    looks_like_ascii_status_label, looks_like_numbered_option, normalize_agent_pane_text,
+    split_inline_separators, strip_inline_control_hints, strip_standalone_prompt_markers,
 };
 
 pub(super) fn normalize_pane_text(text: &str) -> String {
@@ -34,7 +35,7 @@ fn strip_inline_codex_ui(text: &str) -> String {
     let mut output = strip_inline_warning_tail(text);
     output = strip_inline_activity_tail(&output);
     output = strip_inline_codex_prompt_tail(&output);
-    strip_parenthesized_control_hints(&output)
+    strip_inline_control_hints(&output)
 }
 
 fn strip_inline_warning_tail(text: &str) -> String {
@@ -45,7 +46,7 @@ fn strip_inline_warning_tail(text: &str) -> String {
 }
 
 fn strip_inline_activity_tail(text: &str) -> String {
-    if text.trim_start().starts_with('•') && text.trim().starts_with("• ") && is_activity_status_tail(text) {
+    if text.trim_start().starts_with('•') && is_activity_status_tail(text) {
         return String::new();
     }
 
@@ -53,7 +54,7 @@ fn strip_inline_activity_tail(text: &str) -> String {
     while let Some(relative_start) = text[search_from..].find(" • ") {
         let start = search_from + relative_start;
         let tail = &text[start..];
-        if tail_contains_control_hint(tail) || tail_contains_prompt_marker(tail) {
+        if contains_control_hint(tail) || contains_prompt_marker(tail) {
             return text[..start].trim_end().to_owned();
         }
         search_from = start + " • ".len();
@@ -62,20 +63,11 @@ fn strip_inline_activity_tail(text: &str) -> String {
 }
 
 fn is_activity_status_tail(text: &str) -> bool {
-    let trimmed = text.trim_start().trim_start_matches('•').trim_start();
-    let label = trimmed
-        .split(['(', '·', '›'])
-        .next()
-        .unwrap_or_default()
-        .trim();
+    looks_like_ascii_status_label(text) && contains_control_hint(text) && has_status_metadata(text)
+}
 
-    !label.is_empty()
-        && label.chars().count() <= 32
-        && label
-            .chars()
-            .all(|ch| ch.is_ascii_alphabetic() || ch.is_whitespace())
-        && tail_contains_control_hint(text)
-        && (text.contains('(') || text.contains('·'))
+fn has_status_metadata(text: &str) -> bool {
+    text.contains('(') || text.contains('·')
 }
 
 fn strip_inline_codex_prompt_tail(text: &str) -> String {
@@ -102,41 +94,6 @@ fn find_prompt_tail(text: &str) -> Option<(usize, &str)> {
         search_from = start + marker.len();
     }
     None
-}
-
-fn strip_parenthesized_control_hints(text: &str) -> String {
-    let mut output = String::new();
-    let mut rest = text;
-    while let Some(start) = rest.find('(') {
-        let Some(end) = rest[start..].find(')') else {
-            break;
-        };
-        let end = start + end + 1;
-        let candidate = &rest[start..end];
-        if parenthesized_hint_is_ui_chrome(candidate) {
-            output.push_str(&rest[..start]);
-            rest = &rest[end..];
-        } else {
-            output.push_str(&rest[..end]);
-            rest = &rest[end..];
-        }
-    }
-    output.push_str(rest);
-    output.trim_end().to_owned()
-}
-
-fn parenthesized_hint_is_ui_chrome(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    lower.contains("ctrl") || lower.contains("interrupt") || lower.contains("transcript") || lower.contains("expand")
-}
-
-fn tail_contains_control_hint(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    lower.contains("ctrl") || lower.contains("esc") || lower.contains("interrupt")
-}
-
-fn tail_contains_prompt_marker(text: &str) -> bool {
-    text.contains(" › ")
 }
 
 #[cfg(test)]

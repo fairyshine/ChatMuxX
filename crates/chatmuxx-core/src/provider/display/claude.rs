@@ -1,22 +1,8 @@
 use super::{
-    clean_footer_line, clean_selected_option_or_line, normalize_agent_pane_text,
-    split_inline_separators, strip_standalone_prompt_markers,
+    clean_footer_line, clean_selected_option_or_line, contains_prompt_marker, is_mostly_ui_symbols,
+    looks_like_ascii_status_label, normalize_agent_pane_text, split_inline_separators,
+    strip_standalone_prompt_markers,
 };
-
-const STATUS_SYMBOLS: &[char] = &['✢', '✳', '✶', '✻', '✽', '✼', '✺'];
-const TIP_MARKER: &str = "⎿ Tip:";
-const CONTENT_RESUME_MARKERS: &[&str] = &["⏺", "• ", "Read ", "Reading ", "Searched ", "\n"];
-const STARTUP_NOISE_SUBSTRINGS: &[&str] = &[
-    "claude code",
-    "tips for getting started",
-    "welcome back",
-    "run /init to create",
-    "recent activity",
-    "no recent activity",
-    "api usage billing",
-    "/effort",
-];
-const STARTUP_NOISE_EXACT: &[&str] = &["esc to cancel"];
 
 pub(super) fn normalize_pane_text(text: &str) -> String {
     normalize_agent_pane_text(text, clean_content_line, is_claude_noise_line)
@@ -41,12 +27,12 @@ fn extract_status_from_line(line: &str) -> Option<String> {
     let line = line.trim();
     let start = line
         .char_indices()
-        .find_map(|(index, ch)| is_status_symbol(ch).then_some(index))?;
+        .find_map(|(index, ch)| is_symbol_status_char(ch).then_some(index))?;
     let status = &line[start..];
-    if !looks_like_status_fragment(status, line.len().saturating_sub(start)) {
+    if !looks_like_status_tail(&status[status.chars().next()?.len_utf8()..]) {
         return None;
     }
-    let end = next_meaningful_agent_marker(&status[status.chars().next()?.len_utf8()..])
+    let end = next_claude_content_marker(&status[status.chars().next()?.len_utf8()..])
         .map(|index| status.chars().next().unwrap().len_utf8() + index)
         .unwrap_or(status.len());
     let cleaned = status[..end]
@@ -62,12 +48,52 @@ fn extract_status_from_line(line: &str) -> Option<String> {
 
 fn strip_inline_tips(text: &str) -> String {
     let mut output = text.to_owned();
-    while let Some(start) = output.find(TIP_MARKER) {
-        let after_start = start + TIP_MARKER.len();
-        let tail = &output[after_start..];
-        let next = next_meaningful_agent_marker(tail).map(|index| after_start + index);
-        match next {
-            Some(end) => output.replace_range(start..end, ""),
+    while let Some(start) = find_tip_marker(&output) {
+        let tail = &output[start..];
+        let end = next_claude_content_marker(&tail['⎿'.len_utf8()..])
+            .map(|index| '⎿'.len_utf8() + index)
+            .unwrap_or(tail.len());
+        output.replace_range(start..start + end, "");
+    }
+    output
+}
+
+fn find_tip_marker(text: &str) -> Option<usize> {
+    let mut search_from = 0;
+    while let Some(relative_start) = text[search_from..].find('⎿') {
+        let start = search_from + relative_start;
+        if marker_tail_has_label(&text[start + '⎿'.len_utf8()..]) {
+            return Some(start);
+        }
+        search_from = start + '⎿'.len_utf8();
+    }
+    None
+}
+
+fn marker_tail_has_label(text: &str) -> bool {
+    let head = text.trim_start();
+    let label = head
+        .split([':', '：'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    !label.is_empty()
+        && label.chars().count() <= 32
+        && label
+            .chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch.is_whitespace())
+        && (head.contains(':') || head.contains('：'))
+}
+
+fn strip_inline_status(text: &str) -> String {
+    let mut output = text.to_owned();
+    while let Some((start, marker)) = find_marker_char(&output, &is_symbol_status_char) {
+        let tail = &output[start + marker.len_utf8()..];
+        if !looks_like_status_tail(tail) {
+            break;
+        }
+        match next_claude_content_marker(tail) {
+            Some(end) => output.replace_range(start..start + marker.len_utf8() + end, ""),
             None => {
                 output.truncate(start);
                 break;
@@ -77,55 +103,54 @@ fn strip_inline_tips(text: &str) -> String {
     output
 }
 
-fn strip_inline_status(text: &str) -> String {
-    let mut output = text.to_owned();
-    for &symbol in STATUS_SYMBOLS {
-        while let Some(index) = output.find(symbol) {
-            let tail = &output[index..];
-            if !looks_like_status_fragment(tail, output.len().saturating_sub(index)) {
-                break;
-            }
-            if let Some(next) = next_meaningful_agent_marker(&tail[symbol.len_utf8()..]) {
-                let end = index + symbol.len_utf8() + next;
-                output.replace_range(index..end, "");
-            } else {
-                output.truncate(index);
-                break;
-            }
-        }
-    }
-    output
+fn find_marker_char(text: &str, is_marker: &impl Fn(char) -> bool) -> Option<(usize, char)> {
+    text.char_indices()
+        .find_map(|(index, ch)| is_marker(ch).then_some((index, ch)))
 }
 
-fn next_meaningful_agent_marker(text: &str) -> Option<usize> {
-    CONTENT_RESUME_MARKERS
-        .iter()
-        .filter_map(|marker| text.find(marker))
-        .min()
+fn next_claude_content_marker(text: &str) -> Option<usize> {
+    text.char_indices()
+        .find(|(_, ch)| matches!(*ch, '⏺' | '•' | '└'))
+        .map(|(index, _)| index)
+        .or_else(|| text.find('\n'))
 }
 
-fn is_status_symbol(ch: char) -> bool {
-    STATUS_SYMBOLS.contains(&ch)
+fn looks_like_status_tail(text: &str) -> bool {
+    let head = text.split('\n').next().unwrap_or_default();
+    head.chars().count() <= 180 || next_claude_content_marker(head).is_some()
 }
 
-fn looks_like_status_fragment(text: &str, chars_after_symbol: usize) -> bool {
-    text.chars().next().is_some_and(is_status_symbol)
-        && (chars_after_symbol <= 160
-            || next_meaningful_agent_marker(text)
-                .is_some_and(|index| text[..index].chars().count() <= 160))
+fn is_symbol_status_char(ch: char) -> bool {
+    matches!(ch, '✢' | '✳' | '✶' | '✻' | '✽' | '✼' | '✺')
 }
 
 fn is_claude_noise_line(line: &str) -> bool {
     let cleaned = clean_footer_line(line);
     let lower = cleaned.to_ascii_lowercase();
-    STARTUP_NOISE_SUBSTRINGS
-        .iter()
-        .any(|fragment| lower.contains(fragment))
-        || STARTUP_NOISE_EXACT.iter().any(|value| lower == *value)
-        || (cleaned.starts_with("~/") && !cleaned.chars().any(char::is_whitespace))
-        || cleaned
-            .chars()
-            .any(|ch| matches!(ch, '▐' | '▛' | '█' | '▜' | '▌' | '▝' | '▘' | '▗'))
+    looks_like_box_chrome(&cleaned)
+        || looks_like_version_title_line(&cleaned)
+        || looks_like_ascii_status_label(&cleaned) && contains_prompt_marker(&cleaned)
+        || is_mostly_ui_symbols(&cleaned)
+        || looks_like_path_only(&cleaned)
+        || lower.starts_with("esc ") && lower.contains("cancel")
+}
+
+fn looks_like_version_title_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower
+        .split_whitespace()
+        .any(|token| token.starts_with('v') && token.chars().skip(1).next().is_some_and(|ch| ch.is_ascii_digit()))
+        && line.chars().count() <= 120
+        && line.chars().filter(|ch| ch.is_ascii_alphabetic()).count() >= 12
+}
+
+fn looks_like_box_chrome(line: &str) -> bool {
+    line.contains('│') || line.contains('╭') || line.contains('╰') || line.contains('╮') || line.contains('╯')
+}
+
+fn looks_like_path_only(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty() && !text.chars().any(char::is_whitespace) && (text.starts_with("~/") || text.starts_with('/'))
 }
 
 #[cfg(test)]

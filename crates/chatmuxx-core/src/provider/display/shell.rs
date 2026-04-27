@@ -10,9 +10,19 @@ pub(super) fn normalize_pane_text(text: &str) -> String {
 
 fn is_noisy_shell_line(line: &str) -> bool {
     let line = line.trim();
-    line == "The default interactive shell is now zsh."
-        || line == "To update your account to use zsh, please run `chsh -s /bin/zsh`."
-        || line.starts_with("For more details, please visit https://support.apple.com/kb/")
+    let lower = line.to_ascii_lowercase();
+    is_shell_login_notice(&lower) || is_support_url_notice(&lower)
+}
+
+fn is_shell_login_notice(lower: &str) -> bool {
+    lower.chars().count() <= 120
+        && (lower.contains("default interactive shell")
+            || lower.contains("update your account")
+            || lower.contains("chsh -s"))
+}
+
+fn is_support_url_notice(lower: &str) -> bool {
+    lower.starts_with("for more details") && lower.contains("http")
 }
 
 fn is_shell_prompt_or_echo_line(line: &str) -> bool {
