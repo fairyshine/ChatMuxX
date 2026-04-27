@@ -28,7 +28,7 @@ pub enum Command {
     /// Validate local configuration and dependencies.
     #[command(alias = "check")]
     Doctor,
-    /// Update cmx from the installed ChatMuxX git checkout.
+    /// Update cmx from GitHub Releases.
     Update(UpdateArgs),
     /// Manage local configuration.
     #[command(alias = "cfg")]
@@ -76,12 +76,15 @@ pub struct DaemonArgs {
 
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
-    /// Source checkout path. Defaults to ~/.chatmuxx/src/ChatMuxX.
+    /// Source checkout path. When set, update from source instead of GitHub Releases.
     #[arg(long)]
     pub source_dir: Option<PathBuf>,
-    /// Git branch to update from. Defaults to master.
+    /// Git branch to update from when using --source-dir. Defaults to master.
     #[arg(long)]
     pub branch: Option<String>,
+    /// Release version to install, for example v0.0.1-dev1, latest-prerelease, or latest-stable.
+    #[arg(long)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Args)]

@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
         },
         Command::Doctor => chatmuxx_core::app::doctor::run().await?,
         Command::Update(args) => {
-            chatmuxx_core::app::update::run(args.source_dir, args.branch).await?
+            chatmuxx_core::app::update::run(args.source_dir, args.branch, args.version).await?
         }
         Command::Config(args) => match args.command {
             ConfigCommand::Init(init) => chatmuxx_core::app::config_init::run(init.path).await?,

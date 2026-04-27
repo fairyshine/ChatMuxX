@@ -90,6 +90,8 @@ WeChat commands act on the current bound session when no session id is given. Lo
 | --- | --- | --- |
 | Help | `cmx h` | `cmx help` |
 | Create Codex session | `cmx n --id main /path codex` | `cmx new --id main /path codex` |
+| Create Shell session | `cmx n --id sh /path shell` | `cmx new --id sh /path shell` |
+| Create Claude session | `cmx n --id claude /path claude` | `cmx new --id claude /path claude` |
 | List sessions | `cmx ls` | `cmx list` / `cmx sessions list` |
 | Switch session | `cmx sw main` | `cmx switch main` |
 | Rename session | WeChat: `cmx mv main2`<br>Local: `cmx mv main main2` | WeChat: `cmx rename main2`<br>Local: `cmx rename main main2` |
@@ -103,7 +105,13 @@ WeChat commands act on the current bound session when no session id is given. Lo
 
 ## Update
 
-For release installs, rerun the one-line installer to download the latest GitHub Release, including pre-releases.
+Run:
+
+```bash
+cmx update
+```
+
+This downloads the latest GitHub Release, including pre-releases.
 
 Use `CHATMUXX_VERSION=latest-stable` if you only want the latest stable release.
 

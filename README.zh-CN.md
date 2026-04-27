@@ -90,6 +90,8 @@ Provider 自己的 `/...` 命令会直接发给 Codex 或 Claude，不会被 Cha
 | --- | --- | --- |
 | 帮助 | `cmx h` | `cmx help` |
 | 新建 Codex 会话 | `cmx n --id main /路径 codex` | `cmx new --id main /路径 codex` |
+| 新建 Shell 会话 | `cmx n --id sh /路径 shell` | `cmx new --id sh /路径 shell` |
+| 新建 Claude 会话 | `cmx n --id claude /路径 claude` | `cmx new --id claude /路径 claude` |
 | 查看会话 | `cmx ls` | `cmx list` / `cmx sessions list` |
 | 切换会话 | `cmx sw main` | `cmx switch main` |
 | 重命名会话 | 微信：`cmx mv main2`<br>本地：`cmx mv main main2` | 微信：`cmx rename main2`<br>本地：`cmx rename main main2` |
@@ -103,7 +105,13 @@ Provider 自己的 `/...` 命令会直接发给 Codex 或 Claude，不会被 Cha
 
 ## 更新
 
-release 安装方式下，重新运行一键安装命令即可下载最新 GitHub Release，包括 pre-release。
+运行：
+
+```bash
+cmx update
+```
+
+这会下载最新 GitHub Release，包括 pre-release。
 
 如果只想安装最新正式版，可以设置 `CHATMUXX_VERSION=latest-stable`。
 

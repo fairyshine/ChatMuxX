@@ -7,7 +7,49 @@ use tokio::process::Command;
 
 use crate::{config::default_state_dir, error::Result, ChatMuxXError};
 
-pub async fn run(source_dir: Option<PathBuf>, branch: Option<String>) -> Result<()> {
+const INSTALL_SCRIPT_URL: &str =
+    "https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh";
+
+pub async fn run(
+    source_dir: Option<PathBuf>,
+    branch: Option<String>,
+    version: Option<String>,
+) -> Result<()> {
+    if source_dir.is_none() {
+        return update_from_release(version).await;
+    }
+
+    update_from_source(source_dir, branch).await
+}
+
+async fn update_from_release(version: Option<String>) -> Result<()> {
+    let version = version.or_else(|| std::env::var("CHATMUXX_VERSION").ok());
+    let mut command = if let Some(version) = version.as_deref() {
+        format!(
+            "curl -fsSL {} | CHATMUXX_VERSION={} sh",
+            shell_escape(INSTALL_SCRIPT_URL),
+            shell_escape(version)
+        )
+    } else {
+        format!("curl -fsSL {} | sh", shell_escape(INSTALL_SCRIPT_URL))
+    };
+
+    if let Ok(method) = std::env::var("CHATMUXX_INSTALL_METHOD") {
+        command = format!(
+            "CHATMUXX_INSTALL_METHOD={} {}",
+            shell_escape(&method),
+            command
+        );
+    }
+
+    println!("Updating cmx from GitHub Releases...");
+    println!("Running installer: {command}");
+    run_inherited("sh", &["-c", &command], Path::new(".")).await?;
+    println!("ChatMuxX updated. Restart `cmx daemon` if it is running.");
+    Ok(())
+}
+
+async fn update_from_source(source_dir: Option<PathBuf>, branch: Option<String>) -> Result<()> {
     let source_dir = source_dir
         .or_else(|| std::env::var_os("CHATMUXX_SRC_DIR").map(PathBuf::from))
         .unwrap_or(default_state_dir()?.join("src").join("ChatMuxX"));
@@ -40,6 +82,17 @@ pub async fn run(source_dir: Option<PathBuf>, branch: Option<String>) -> Result<
 
     println!("ChatMuxX updated. Restart `cmx daemon` if it is running.");
     Ok(())
+}
+
+fn shell_escape(value: &str) -> String {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || "-_./:=+".contains(ch))
+    {
+        value.to_owned()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
 
 async fn run_inherited(program: &str, args: &[&str], cwd: &Path) -> Result<()> {
@@ -79,10 +132,21 @@ mod tests {
     #[tokio::test]
     async fn update_reports_missing_source_directory() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let err = run(Some(dir.path().join("missing")), Some("master".to_owned()))
-            .await
-            .expect_err("missing source");
+        let err = run(
+            Some(dir.path().join("missing")),
+            Some("master".to_owned()),
+            None,
+        )
+        .await
+        .expect_err("missing source");
 
         assert!(matches!(err, ChatMuxXError::UpdateSourceMissing(_)));
+    }
+
+    #[test]
+    fn shell_escape_quotes_unsafe_values() {
+        assert_eq!(shell_escape("v0.0.1-dev1"), "v0.0.1-dev1");
+        assert_eq!(shell_escape("bad value"), "'bad value'");
+        assert_eq!(shell_escape("bad'value"), "'bad'\\''value'");
     }
 }

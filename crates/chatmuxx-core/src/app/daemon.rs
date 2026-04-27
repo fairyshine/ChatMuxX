@@ -1148,7 +1148,32 @@ fn text_delta(
         }
     }
 
+    if let Some(prefix_len) =
+        longest_current_prefix_seen_in_previous(&previous_lines, &current_lines)
+    {
+        return non_empty_delta(&current_lines[prefix_len..].join("\n"));
+    }
+
     Some(current)
+}
+
+fn longest_current_prefix_seen_in_previous(
+    previous_lines: &[&str],
+    current_lines: &[&str],
+) -> Option<usize> {
+    let max_len = previous_lines.len().min(current_lines.len());
+    for len in (1..=max_len).rev() {
+        let prefix = &current_lines[..len];
+        let prefix_compact = compact_for_history_dedupe(&prefix.join("\n"));
+        if len < 3 && prefix_compact.chars().count() < COMPACT_DEDUPE_MIN_CHARS {
+            continue;
+        }
+        if previous_lines.windows(len).any(|window| window == prefix) {
+            return Some(len);
+        }
+    }
+
+    None
 }
 
 fn normalize_raw_pane_text(text: &str) -> String {
@@ -1583,6 +1608,42 @@ mod tests {
         let delta = pane_delta(Some("a\nb\nc"), "b\nc\nd", ProviderKind::Codex);
 
         assert_eq!(delta, Some("d".to_owned()));
+    }
+
+    #[test]
+    fn pane_delta_handles_current_tail_embedded_in_previous() {
+        let previous = [
+            "startup banner",
+            "old warning",
+            "• 明白，这个仓库 /Users/wumengsong/Code/cmux_test 是专门用来测试 cmux 的。",
+            "  你接下来想让我在这里做什么？",
+        ]
+        .join("\n");
+        let current = [
+            "old warning",
+            "• 明白，这个仓库 /Users/wumengsong/Code/cmux_test 是专门用来测试 cmux 的。",
+            "  你接下来想让我在这里做什么？",
+            "• 我来快速列一下当前目录内容。",
+            "• 当前目录 /Users/wumengsong/Code/cmux_test 里没有项目文件，只有：",
+            "  - . 当前目录",
+            "  - .. 上级目录",
+        ]
+        .join("\n");
+
+        let delta = pane_delta(Some(&previous), &current, ProviderKind::Codex);
+
+        assert_eq!(
+            delta,
+            Some(
+                [
+                    "• 我来快速列一下当前目录内容。",
+                    "• 当前目录 /Users/wumengsong/Code/cmux_test 里没有项目文件，只有：",
+                    "  - . 当前目录",
+                    "  - .. 上级目录",
+                ]
+                .join("\n")
+            )
+        );
     }
 
     #[test]
