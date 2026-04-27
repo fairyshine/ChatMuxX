@@ -32,7 +32,14 @@ Codex 会在你的电脑上运行，回复会发回微信。
 curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh | sh
 ```
 
-安装脚本会把仓库 clone 到 `~/.chatmuxx/src/ChatMuxX`，然后执行 `cargo install`。安装完成后会得到 `cmx` 命令。
+安装脚本会从 GitHub Releases 下载适合当前系统的二进制包，默认支持 pre-release。安装完成后会得到 `cmx` 命令。
+
+如果要安装指定 pre-release：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
+CHATMUXX_VERSION=v0.0.1-dev1 sh /tmp/chatmuxx-install.sh
+```
 
 如果想先看脚本内容再执行：
 
@@ -54,7 +61,6 @@ alias cmx="$HOME/.cargo/bin/cmx"
 电脑上需要有：
 
 - `tmux`
-- Rust / Cargo
 - Codex CLI，并且已经在本机登录
 - 可以使用 iLink Bot API 的微信账号
 
@@ -62,9 +68,10 @@ alias cmx="$HOME/.cargo/bin/cmx"
 
 ```bash
 tmux -V
-cargo --version
 codex --version
 ```
+
+如果 release 下载失败，安装脚本会提示源码安装的备用命令。源码安装需要 `git` 和 Rust/Cargo。
 
 ## 第一次使用
 
@@ -151,9 +158,13 @@ cmx esc main
 cmx update
 ```
 
-`cmx update` 会进入 `~/.chatmuxx/src/ChatMuxX` 执行 `git pull --ff-only`，然后重新安装 `cmx`。
+release 安装方式下，重新运行一键安装命令即可下载最新 GitHub Release，包括 pre-release。
 
-如果 `cmx update` 提示找不到源码目录，先重新运行一次安装命令。
+如果只想安装最新正式版，可以设置 `CHATMUXX_VERSION=latest-stable`。
+
+`cmx update` 仍然可用于源码安装。它会进入 `~/.chatmuxx/src/ChatMuxX` 执行 `git pull --ff-only`，然后重新安装 `cmx`。
+
+如果 `cmx update` 提示找不到源码目录，请使用安装脚本提示的源码安装备用命令。
 
 ## 状态文件
 

@@ -52,5 +52,7 @@ Tag `v0.0.1-dev` requires Cargo version `0.0.1-dev`.
 - `.github/workflows/ci.yml` runs formatting, tests, and clippy on `master` and pull requests.
 - `.github/workflows/release.yml` runs when a `v*` tag is pushed, then verifies that the tag matches the Cargo version.
 - Versions containing `-`, such as `0.0.1-dev`, are published as GitHub prereleases.
-- The release workflow builds `cmx` archives for Linux x86_64, macOS x86_64, and macOS arm64.
+- The release workflow builds `cmx` archives for Linux x86_64, Linux aarch64, macOS x86_64, macOS arm64, Windows x86_64, and Windows aarch64.
 - The release workflow uploads `.tar.gz` archives and `.sha256` checksum files to the GitHub release.
+- `scripts/install.sh` installs from GitHub Releases by default. The default `CHATMUXX_VERSION=latest-prerelease` includes pre-releases. Use `CHATMUXX_VERSION=latest-stable` for the latest stable release, or set an exact tag such as `CHATMUXX_VERSION=v0.0.1-dev1`.
+- Set `CHATMUXX_INSTALL_METHOD=source` to force source install with git and Rust/Cargo.

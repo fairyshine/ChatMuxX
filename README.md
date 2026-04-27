@@ -32,7 +32,14 @@ Recommended one-line install:
 curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh | sh
 ```
 
-The installer clones the repo into `~/.chatmuxx/src/ChatMuxX`, then runs `cargo install`. After that, you get the `cmx` command.
+The installer downloads the matching binary from GitHub Releases. Pre-releases are supported by default. After that, you get the `cmx` command.
+
+To install a specific pre-release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
+CHATMUXX_VERSION=v0.0.1-dev1 sh /tmp/chatmuxx-install.sh
+```
 
 If you want to inspect the installer first:
 
@@ -54,7 +61,6 @@ alias cmx="$HOME/.cargo/bin/cmx"
 You need:
 
 - `tmux`
-- Rust / Cargo
 - Codex CLI, already logged in locally
 - A WeChat account that can use the iLink Bot API
 
@@ -62,9 +68,10 @@ Check them:
 
 ```bash
 tmux -V
-cargo --version
 codex --version
 ```
+
+If release download fails, the installer prints a source-install fallback. Source install requires `git` and Rust/Cargo.
 
 ## First Run
 
@@ -151,9 +158,13 @@ Run the installer again:
 cmx update
 ```
 
-`cmx update` runs `git pull --ff-only` inside `~/.chatmuxx/src/ChatMuxX`, then reinstalls `cmx`.
+For release installs, rerun the one-line installer to download the latest GitHub Release, including pre-releases.
 
-If `cmx update` says the source directory is missing, run the installer once.
+Use `CHATMUXX_VERSION=latest-stable` if you only want the latest stable release.
+
+`cmx update` is still available for source installs. It runs `git pull --ff-only` inside `~/.chatmuxx/src/ChatMuxX`, then reinstalls `cmx`.
+
+If `cmx update` says the source directory is missing, use the source-install fallback printed by the installer.
 
 ## Local State
 
