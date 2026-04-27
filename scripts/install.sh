@@ -10,12 +10,21 @@ SRC_DIR="${CHATMUXX_SRC_DIR:-$HOME/.chatmuxx/src/ChatMuxX}"
 INSTALL_DIR="${CHATMUXX_INSTALL_DIR:-$HOME/.cargo/bin}"
 INSTALL_METHOD="${CHATMUXX_INSTALL_METHOD:-release}"
 VERSION="${CHATMUXX_VERSION:-latest-prerelease}"
+GITHUB_USER_AGENT="${CHATMUXX_GITHUB_USER_AGENT:-ChatMuxX installer}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
     return 1
   fi
+}
+
+github_get() {
+  curl -fsSL -H "User-Agent: $GITHUB_USER_AGENT" "$@"
+}
+
+github_effective_url() {
+  curl -fsSL -H "User-Agent: $GITHUB_USER_AGENT" -o /dev/null -w '%{url_effective}' "$@"
 }
 
 detect_asset() {
@@ -60,26 +69,46 @@ latest_prerelease_tag() {
   need_cmd head || return 1
   need_cmd tr || return 1
 
-  tag="$(curl -fsSL "$RELEASES_PAGE_URL" \
-    | sed -n 's#.*href="/fairyshine/ChatMuxX/releases/tag/\([^"?/]*\)".*#\1#p' \
-    | head -n 1 || true)"
-  if [ -n "$tag" ]; then
-    printf '%s\n' "$tag"
-    return 0
+  if page="$(github_get "$RELEASES_PAGE_URL" 2>/dev/null)"; then
+    tag="$(printf '%s\n' "$page" \
+      | sed -n 's#.*href="/fairyshine/ChatMuxX/releases/tag/\([^"?/]*\)".*#\1#p' \
+      | head -n 1 || true)"
+    if [ -n "$tag" ]; then
+      printf '%s\n' "$tag"
+      return 0
+    fi
   fi
 
-  curl -fsSL "$REPO_API_URL/releases" \
+  if json="$(github_get "$REPO_API_URL/releases" 2>/dev/null)"; then
+    printf '%s\n' "$json" \
       | tr ',' '\n' \
       | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
       | head -n 1
+  fi
 }
 
 latest_stable_tag() {
   need_cmd curl || return 1
   need_cmd sed || return 1
-  curl -fsSL "$REPO_API_URL/releases/latest" \
-    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    | head -n 1
+
+  if effective_url="$(github_effective_url "$RELEASES_PAGE_URL/latest" 2>/dev/null)"; then
+    case "$effective_url" in
+      */releases/tag/*)
+        tag="${effective_url##*/releases/tag/}"
+        tag="${tag%%\?*}"
+        if [ -n "$tag" ] && [ "$tag" != "latest" ]; then
+          printf '%s\n' "$tag"
+          return 0
+        fi
+        ;;
+    esac
+  fi
+
+  if json="$(github_get "$REPO_API_URL/releases/latest" 2>/dev/null)"; then
+    printf '%s\n' "$json" \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -n 1
+  fi
 }
 
 sha256_of() {
@@ -162,8 +191,8 @@ install_release() {
 
   echo "Installing ChatMuxX ${tag} from GitHub Release..."
   echo "Downloading ${archive}..."
-  curl -fsSL "$url" -o "$tmp_dir/$archive" || return 1
-  curl -fsSL "$checksum_url" -o "$tmp_dir/$archive.sha256" || return 1
+  github_get "$url" -o "$tmp_dir/$archive" || return 1
+  github_get "$checksum_url" -o "$tmp_dir/$archive.sha256" || return 1
   verify_checksum "$tmp_dir/$archive" "$tmp_dir/$archive.sha256" || return 1
 
   mkdir -p "$tmp_dir/package"

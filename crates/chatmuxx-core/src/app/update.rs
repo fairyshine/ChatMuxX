@@ -26,12 +26,17 @@ async fn update_from_release(version: Option<String>) -> Result<()> {
     let version = version.or_else(|| std::env::var("CHATMUXX_VERSION").ok());
     let mut command = if let Some(version) = version.as_deref() {
         format!(
-            "curl -fsSL {} | CHATMUXX_VERSION={} sh",
+            "curl -fsSL -A {} {} | CHATMUXX_VERSION={} sh",
+            shell_escape("ChatMuxX updater"),
             shell_escape(INSTALL_SCRIPT_URL),
             shell_escape(version)
         )
     } else {
-        format!("curl -fsSL {} | sh", shell_escape(INSTALL_SCRIPT_URL))
+        format!(
+            "curl -fsSL -A {} {} | sh",
+            shell_escape("ChatMuxX updater"),
+            shell_escape(INSTALL_SCRIPT_URL)
+        )
     };
 
     if let Ok(method) = std::env::var("CHATMUXX_INSTALL_METHOD") {
