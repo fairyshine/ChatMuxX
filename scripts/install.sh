@@ -3,6 +3,7 @@ set -eu
 
 REPO_URL="${CHATMUXX_REPO_URL:-https://github.com/fairyshine/ChatMuxX}"
 REPO_API_URL="${CHATMUXX_REPO_API_URL:-https://api.github.com/repos/fairyshine/ChatMuxX}"
+RELEASES_PAGE_URL="${CHATMUXX_RELEASES_PAGE_URL:-https://github.com/fairyshine/ChatMuxX/releases}"
 RELEASE_BASE_URL="${CHATMUXX_RELEASE_BASE_URL:-https://github.com/fairyshine/ChatMuxX/releases/download}"
 BRANCH="${CHATMUXX_BRANCH:-master}"
 SRC_DIR="${CHATMUXX_SRC_DIR:-$HOME/.chatmuxx/src/ChatMuxX}"
@@ -58,10 +59,19 @@ latest_prerelease_tag() {
   need_cmd sed || return 1
   need_cmd head || return 1
   need_cmd tr || return 1
+
+  tag="$(curl -fsSL "$RELEASES_PAGE_URL" \
+    | sed -n 's#.*href="/fairyshine/ChatMuxX/releases/tag/\([^"?/]*\)".*#\1#p' \
+    | head -n 1 || true)"
+  if [ -n "$tag" ]; then
+    printf '%s\n' "$tag"
+    return 0
+  fi
+
   curl -fsSL "$REPO_API_URL/releases" \
-    | tr ',' '\n' \
-    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    | head -n 1
+      | tr ',' '\n' \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -n 1
 }
 
 latest_stable_tag() {
