@@ -139,7 +139,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chatmuxx-core"
-version = "0.0.1-dev1"
+version = "0.0.1-dev2"
 dependencies = [
  "base64",
  "qrcode",
@@ -196,7 +196,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cmx"
-version = "0.0.1-dev1"
+version = "0.0.1-dev2"
 dependencies = [
  "anyhow",
  "chatmuxx-core",
