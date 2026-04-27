@@ -13,7 +13,7 @@ pub async fn run(source_dir: Option<PathBuf>, branch: Option<String>) -> Result<
         .unwrap_or(default_state_dir()?.join("src").join("ChatMuxX"));
     let branch = branch
         .or_else(|| std::env::var("CHATMUXX_BRANCH").ok())
-        .unwrap_or_else(|| "main".to_owned());
+        .unwrap_or_else(|| "master".to_owned());
 
     if !source_dir.join(".git").is_dir() {
         return Err(ChatMuxXError::UpdateSourceMissing(source_dir));
@@ -79,7 +79,7 @@ mod tests {
     #[tokio::test]
     async fn update_reports_missing_source_directory() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let err = run(Some(dir.path().join("missing")), Some("main".to_owned()))
+        let err = run(Some(dir.path().join("missing")), Some("master".to_owned()))
             .await
             .expect_err("missing source");
 

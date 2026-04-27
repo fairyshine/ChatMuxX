@@ -29,7 +29,7 @@ Codex 会在你的电脑上运行，回复会发回微信。
 推荐一键安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh | sh
 ```
 
 安装脚本会把仓库 clone 到 `~/.chatmuxx/src/ChatMuxX`，然后执行 `cargo install`。安装完成后会得到 `cmx` 命令。
@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/in
 如果想先看脚本内容再执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh -o /tmp/chatmuxx-install.sh
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
 less /tmp/chatmuxx-install.sh
 sh /tmp/chatmuxx-install.sh
 ```

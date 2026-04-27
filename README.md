@@ -29,7 +29,7 @@ Codex runs on your computer. The answer comes back to WeChat.
 Recommended one-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh | sh
 ```
 
 The installer clones the repo into `~/.chatmuxx/src/ChatMuxX`, then runs `cargo install`. After that, you get the `cmx` command.
@@ -37,7 +37,7 @@ The installer clones the repo into `~/.chatmuxx/src/ChatMuxX`, then runs `cargo 
 If you want to inspect the installer first:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh -o /tmp/chatmuxx-install.sh
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
 less /tmp/chatmuxx-install.sh
 sh /tmp/chatmuxx-install.sh
 ```

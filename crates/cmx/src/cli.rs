@@ -79,7 +79,7 @@ pub struct UpdateArgs {
     /// Source checkout path. Defaults to ~/.chatmuxx/src/ChatMuxX.
     #[arg(long)]
     pub source_dir: Option<PathBuf>,
-    /// Git branch to update from. Defaults to main.
+    /// Git branch to update from. Defaults to master.
     #[arg(long)]
     pub branch: Option<String>,
 }

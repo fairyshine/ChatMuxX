@@ -2,7 +2,7 @@
 set -eu
 
 REPO_URL="${CHATMUXX_REPO_URL:-https://github.com/fairyshine/ChatMuxX}"
-BRANCH="${CHATMUXX_BRANCH:-main}"
+BRANCH="${CHATMUXX_BRANCH:-master}"
 SRC_DIR="${CHATMUXX_SRC_DIR:-$HOME/.chatmuxx/src/ChatMuxX}"
 
 need_cmd() {
