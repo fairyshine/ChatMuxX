@@ -161,9 +161,9 @@ Goal:
 Scenario:
 
 1. start app with fake channel adapter.
-2. inject owner `InboundText("cmx help")`.
+2. inject owner `InboundText("cmux help")`.
 3. assert delivery receives help text.
-4. inject `InboundText("cmx new /tmp shell")`.
+4. inject `InboundText("cmux new /tmp shell")`.
 5. assert session manager action is called.
 6. inject plain text.
 7. assert provider input is sent.
@@ -174,18 +174,18 @@ This keeps the core loop testable without real network or tmux.
 
 Before v0.1 is considered usable:
 
-1. `cmx config init`
-2. `cmx doctor`
-3. `cmx login wechat`
-4. `cmx daemon`
-5. Send `cmx help` from WeChat.
-6. Send `cmx new /tmp shell`.
+1. `cmux config init`
+2. `cmux doctor`
+3. `cmux login wechat`
+4. `cmux daemon`
+5. Send `cmux help` from WeChat.
+6. Send `cmux new /tmp shell`.
 7. Send `pwd`.
 8. Receive shell output.
 9. Send provider `/help` in a Codex or Claude session.
-10. Send `cmx screenshot`.
-11. Send `cmx sessions`.
-12. Send `cmx close`.
+10. Send `cmux screenshot`.
+11. Send `cmux sessions`.
+12. Send `cmux close`.
 13. Confirm close.
 14. Stop daemon with Ctrl-C.
 15. Restart daemon and verify state loads.

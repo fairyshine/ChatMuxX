@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "crates/cmx",
+  "crates/cmux",
   "crates/chatmuxx-core",
 ]
 resolver = "2"

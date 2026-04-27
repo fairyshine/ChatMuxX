@@ -251,7 +251,7 @@ fn window_name(id: &SessionId, display_name: &str) -> String {
             }
         })
         .collect::<String>();
-    format!("cmx-{safe_display}-{suffix}")
+    format!("cmux-{safe_display}-{suffix}")
 }
 
 fn now_string() -> String {
@@ -274,7 +274,7 @@ mod tests {
     fn window_name_is_stable_and_tmux_friendly() {
         let name = window_name(&SessionId("sess-123456789".to_owned()), "shell:/tmp/a b");
 
-        assert_eq!(name, "cmx-shell--tmp-a-b-123456789");
+        assert_eq!(name, "cmux-shell--tmp-a-b-123456789");
     }
 
     #[test]

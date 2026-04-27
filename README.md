@@ -10,19 +10,19 @@ It is a new Rust implementation. It does not depend on OpenClaw at runtime and d
 
 ```bash
 cargo build
-target/debug/cmx config init
-target/debug/cmx doctor
-target/debug/cmx login wechat
-target/debug/cmx daemon
+target/debug/cmux config init
+target/debug/cmux doctor
+target/debug/cmux login wechat
+target/debug/cmux daemon
 ```
 
 Then send this from WeChat:
 
 ```text
-cmx new /absolute/path/to/your/project codex
+cmux new /absolute/path/to/your/project codex
 ```
 
-After the session is created, keep chatting in the same WeChat conversation. Normal messages are forwarded to Codex, while commands that start with `cmx` control ChatMuxX.
+After the session is created, keep chatting in the same WeChat conversation. Normal messages are forwarded to Codex, while commands that start with `cmux` control ChatMuxX.
 
 ## Why ChatMuxX
 
@@ -38,18 +38,18 @@ ChatMuxX is useful when you want to keep a coding agent running on your own mach
 
 The project currently supports a minimal usable WeChat-to-Codex flow:
 
-- QR login to WeChat iLink with `cmx login wechat`.
-- Foreground daemon with `cmx daemon`.
+- QR login to WeChat iLink with `cmux login wechat`.
+- Foreground daemon with `cmux daemon`.
 - Create a Codex tmux window from WeChat.
 - Forward normal WeChat text to the active Codex session.
 - Capture tmux pane output and send it back to WeChat.
-- List, switch, screenshot, interrupt, Enter/Esc, and close sessions with `cmx ...` commands.
+- List, switch, screenshot, interrupt, Enter/Esc, and close sessions with `cmux ...` commands.
 
 Some parts are still early:
 
 - Codex output is read from tmux pane capture, not structured transcript parsing.
-- `cmx screenshot` currently sends text capture, not an image.
-- `cmx close` has no confirmation prompt yet.
+- `cmux screenshot` currently sends text capture, not an image.
+- `cmux close` has no confirmation prompt yet.
 - The daemon runs in the foreground; no launchd/systemd service is installed yet.
 - Claude provider, richer recovery, fake iLink integration tests, and multi-user policies are still in progress.
 
@@ -61,7 +61,7 @@ ChatMuxX keeps the chat channel, routing logic, providers, tmux control, and sta
 WeChat / mobile chat
         |
         v
-cmx daemon  -> mobile command router -> session manager
+cmux daemon  -> mobile command router -> session manager
         |                                  |
         |                                  v
         |                              tmux windows
@@ -104,43 +104,43 @@ cargo build
 Run the local binary:
 
 ```bash
-target/debug/cmx --help
+target/debug/cmux --help
 ```
 
-Install `cmx` into Cargo's local bin directory:
+Install `cmux` into Cargo's local bin directory:
 
 ```bash
-cargo install --path crates/cmx
+cargo install --path crates/cmux
 ```
 
-After installation, use `cmx` directly:
+After installation, use `cmux` directly:
 
 ```bash
-cmx --help
+cmux --help
 ```
 
 Run a quick local check:
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 Start the foreground daemon:
 
 ```bash
-target/debug/cmx daemon
+target/debug/cmux daemon
 ```
 
 List local sessions:
 
 ```bash
-target/debug/cmx sessions list
+target/debug/cmux sessions list
 ```
 
 Create a local test session without WeChat:
 
 ```bash
-target/debug/cmx sessions new /tmp shell
+target/debug/cmux sessions new /tmp shell
 ```
 
 ## First Run
@@ -148,7 +148,7 @@ target/debug/cmx sessions new /tmp shell
 Create the default config:
 
 ```bash
-target/debug/cmx config init
+target/debug/cmux config init
 ```
 
 This creates:
@@ -160,13 +160,13 @@ This creates:
 Run a local health check:
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 Log in to WeChat:
 
 ```bash
-target/debug/cmx login wechat
+target/debug/cmux login wechat
 ```
 
 The command prints a QR code in the terminal. Scan it with WeChat and confirm login. ChatMuxX stores the account token in:
@@ -178,19 +178,19 @@ The command prints a QR code in the terminal. Scan it with WeChat and confirm lo
 Start the daemon:
 
 ```bash
-target/debug/cmx daemon
+target/debug/cmux daemon
 ```
 
 Keep this process running. It owns the WeChat long-poll loop, command routing, tmux input, and output delivery.
 
 ## Use From WeChat
 
-Send ChatMuxX commands with the `cmx` prefix.
+Send ChatMuxX commands with the `cmux` prefix.
 
 Create a Codex session in a real project directory:
 
 ```text
-cmx new /Users/wumengsong/Code/ChatMuxX codex
+cmux new /Users/wumengsong/Code/ChatMuxX codex
 ```
 
 After the session is created, send normal messages to the same WeChat conversation. They will be forwarded to Codex.
@@ -198,14 +198,14 @@ After the session is created, send normal messages to the same WeChat conversati
 Useful commands:
 
 ```text
-cmx help
-cmx sessions
-cmx switch <session-id>
-cmx screenshot
-cmx interrupt
-cmx enter
-cmx esc
-cmx close
+cmux help
+cmux sessions
+cmux switch <session-id>
+cmux screenshot
+cmux interrupt
+cmux enter
+cmux esc
+cmux close
 ```
 
 Provider-native slash commands are forwarded to the active CLI, so `/...` is not used for ChatMuxX commands.
@@ -215,31 +215,31 @@ Provider-native slash commands are forwarded to the active CLI, so `/...` is not
 You can test the tmux/provider path without WeChat:
 
 ```bash
-target/debug/cmx sessions new /tmp codex
-target/debug/cmx sessions list
-target/debug/cmx sessions send <session-id> "hello" --enter
-target/debug/cmx sessions capture <session-id>
-target/debug/cmx sessions close <session-id>
+target/debug/cmux sessions new /tmp codex
+target/debug/cmux sessions list
+target/debug/cmux sessions send <session-id> "hello" --enter
+target/debug/cmux sessions capture <session-id>
+target/debug/cmux sessions close <session-id>
 ```
 
 Shell is also supported:
 
 ```bash
-target/debug/cmx sessions new /tmp shell
+target/debug/cmux sessions new /tmp shell
 ```
 
-CLI subcommands currently exposed by `cmx`:
+CLI subcommands currently exposed by `cmux`:
 
 ```text
-cmx daemon [--config <path>]
-cmx login wechat
-cmx doctor
-cmx config init [--path <path>]
-cmx sessions new <workspace> [provider] [-- <extra-provider-args>...]
-cmx sessions list
-cmx sessions send <session-id> <text> [--enter]
-cmx sessions capture <session-id>
-cmx sessions close <session-id>
+cmux daemon [--config <path>]
+cmux login wechat
+cmux doctor
+cmux config init [--path <path>]
+cmux sessions new <workspace> [provider] [-- <extra-provider-args>...]
+cmux sessions list
+cmux sessions send <session-id> <text> [--enter]
+cmux sessions capture <session-id>
+cmux sessions close <session-id>
 ```
 
 ## Config
@@ -282,7 +282,7 @@ args = []
 env = {}
 ```
 
-Provider CLIs must be started in a concrete workspace directory. Use `cmx new /absolute/path codex` from WeChat or `cmx sessions new /absolute/path codex` locally.
+Provider CLIs must be started in a concrete workspace directory. Use `cmux new /absolute/path codex` from WeChat or `cmux sessions new /absolute/path codex` locally.
 
 ## State Files
 
@@ -314,10 +314,10 @@ history.jsonl
 
 ## Troubleshooting
 
-If `cmx daemon` says no WeChat account exists, run:
+If `cmux daemon` says no WeChat account exists, run:
 
 ```bash
-target/debug/cmx login wechat
+target/debug/cmux login wechat
 ```
 
 If WeChat commands are ignored, make sure you are sending from the same WeChat user that scanned the login QR code.
@@ -337,13 +337,13 @@ tmux -V
 Run the full local check:
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 ## Repository Layout
 
 ```text
-crates/cmx/              # user-facing cmx CLI
+crates/cmux/              # user-facing cmux CLI
 crates/chatmuxx-core/    # config, daemon, sessions, tmux, providers, channels, state
 docs/design/             # product and architecture design notes
 docs/development/        # implementation docs, task index, testing strategy

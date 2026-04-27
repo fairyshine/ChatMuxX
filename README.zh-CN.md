@@ -10,19 +10,19 @@ ChatMuxX 是一个全新的 Rust 实现。它运行时不依赖 OpenClaw，也�
 
 ```bash
 cargo build
-target/debug/cmx config init
-target/debug/cmx doctor
-target/debug/cmx login wechat
-target/debug/cmx daemon
+target/debug/cmux config init
+target/debug/cmux doctor
+target/debug/cmux login wechat
+target/debug/cmux daemon
 ```
 
 然后从微信发送：
 
 ```text
-cmx new /absolute/path/to/your/project codex
+cmux new /absolute/path/to/your/project codex
 ```
 
-会话创建后，继续在同一个微信会话里聊天即可。普通消息会转发给 Codex，以 `cmx` 开头的消息用于控制 ChatMuxX。
+会话创建后，继续在同一个微信会话里聊天即可。普通消息会转发给 Codex，以 `cmux` 开头的消息用于控制 ChatMuxX。
 
 ## 为什么需要 ChatMuxX
 
@@ -38,18 +38,18 @@ cmx new /absolute/path/to/your/project codex
 
 项目目前已经支持一条最小可用的「微信到 Codex」流程：
 
-- 使用 `cmx login wechat` 通过二维码登录微信 iLink。
-- 使用 `cmx daemon` 启动前台守护进程。
+- 使用 `cmux login wechat` 通过二维码登录微信 iLink。
+- 使用 `cmux daemon` 启动前台守护进程。
 - 从微信创建 Codex tmux 窗口。
 - 将普通微信文本转发到当前活跃的 Codex 会话。
 - 捕获 tmux pane 输出并回传到微信。
-- 使用 `cmx ...` 命令列出、切换、截图、中断、发送 Enter/Esc 和关闭会话。
+- 使用 `cmux ...` 命令列出、切换、截图、中断、发送 Enter/Esc 和关闭会话。
 
 仍处于早期阶段的部分：
 
 - Codex 输出来自 tmux pane capture，还不是结构化 transcript 解析。
-- `cmx screenshot` 目前发送的是文本捕获结果，不是图片。
-- `cmx close` 还没有确认提示。
+- `cmux screenshot` 目前发送的是文本捕获结果，不是图片。
+- `cmux close` 还没有确认提示。
 - daemon 目前以前台进程运行，尚未安装 launchd/systemd 服务。
 - Claude provider、更完整的恢复能力、假的 iLink 集成测试和多用户策略仍在推进中。
 
@@ -61,7 +61,7 @@ ChatMuxX 将聊天通道、路由逻辑、provider、tmux 控制和状态存储�
 微信 / 移动端聊天应用
         |
         v
-cmx daemon  -> 移动端命令路由 -> 会话管理器
+cmux daemon  -> 移动端命令路由 -> 会话管理器
         |                             |
         |                             v
         |                         tmux 窗口
@@ -104,43 +104,43 @@ cargo build
 运行本地二进制：
 
 ```bash
-target/debug/cmx --help
+target/debug/cmux --help
 ```
 
-安装 `cmx` 到 Cargo 本地 bin 目录：
+安装 `cmux` 到 Cargo 本地 bin 目录：
 
 ```bash
-cargo install --path crates/cmx
+cargo install --path crates/cmux
 ```
 
-安装后直接使用 `cmx`：
+安装后直接使用 `cmux`：
 
 ```bash
-cmx --help
+cmux --help
 ```
 
 执行本地快速检查：
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 启动前台 daemon：
 
 ```bash
-target/debug/cmx daemon
+target/debug/cmux daemon
 ```
 
 列出本地会话：
 
 ```bash
-target/debug/cmx sessions list
+target/debug/cmux sessions list
 ```
 
 不经过微信，创建一个本地测试会话：
 
 ```bash
-target/debug/cmx sessions new /tmp shell
+target/debug/cmux sessions new /tmp shell
 ```
 
 ## 首次运行
@@ -148,7 +148,7 @@ target/debug/cmx sessions new /tmp shell
 创建默认配置：
 
 ```bash
-target/debug/cmx config init
+target/debug/cmux config init
 ```
 
 该命令会创建：
@@ -160,13 +160,13 @@ target/debug/cmx config init
 执行本地健康检查：
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 登录微信：
 
 ```bash
-target/debug/cmx login wechat
+target/debug/cmux login wechat
 ```
 
 命令会在终端中打印二维码。使用微信扫码并确认登录。ChatMuxX 会把账号 token 存储在：
@@ -178,19 +178,19 @@ target/debug/cmx login wechat
 启动 daemon：
 
 ```bash
-target/debug/cmx daemon
+target/debug/cmux daemon
 ```
 
 保持该进程持续运行。它负责微信 long-poll 循环、命令路由、tmux 输入和输出投递。
 
 ## 从微信使用
 
-发送以 `cmx` 为前缀的 ChatMuxX 命令。
+发送以 `cmux` 为前缀的 ChatMuxX 命令。
 
 在真实项目目录中创建一个 Codex 会话：
 
 ```text
-cmx new /Users/wumengsong/Code/ChatMuxX codex
+cmux new /Users/wumengsong/Code/ChatMuxX codex
 ```
 
 会话创建后，继续在同一个微信会话里发送普通消息。这些消息会被转发给 Codex。
@@ -198,14 +198,14 @@ cmx new /Users/wumengsong/Code/ChatMuxX codex
 常用命令：
 
 ```text
-cmx help
-cmx sessions
-cmx switch <session-id>
-cmx screenshot
-cmx interrupt
-cmx enter
-cmx esc
-cmx close
+cmux help
+cmux sessions
+cmux switch <session-id>
+cmux screenshot
+cmux interrupt
+cmux enter
+cmux esc
+cmux close
 ```
 
 Provider 原生的 slash commands 会被转发到当前 CLI，因此 `/...` 不会被用作 ChatMuxX 命令。
@@ -215,31 +215,31 @@ Provider 原生的 slash commands 会被转发到当前 CLI，因此 `/...` 不�
 你可以不经过微信，直接测试 tmux/provider 路径：
 
 ```bash
-target/debug/cmx sessions new /tmp codex
-target/debug/cmx sessions list
-target/debug/cmx sessions send <session-id> "hello" --enter
-target/debug/cmx sessions capture <session-id>
-target/debug/cmx sessions close <session-id>
+target/debug/cmux sessions new /tmp codex
+target/debug/cmux sessions list
+target/debug/cmux sessions send <session-id> "hello" --enter
+target/debug/cmux sessions capture <session-id>
+target/debug/cmux sessions close <session-id>
 ```
 
 也支持 shell：
 
 ```bash
-target/debug/cmx sessions new /tmp shell
+target/debug/cmux sessions new /tmp shell
 ```
 
-当前 `cmx` 暴露的 CLI 子命令：
+当前 `cmux` 暴露的 CLI 子命令：
 
 ```text
-cmx daemon [--config <path>]
-cmx login wechat
-cmx doctor
-cmx config init [--path <path>]
-cmx sessions new <workspace> [provider] [-- <extra-provider-args>...]
-cmx sessions list
-cmx sessions send <session-id> <text> [--enter]
-cmx sessions capture <session-id>
-cmx sessions close <session-id>
+cmux daemon [--config <path>]
+cmux login wechat
+cmux doctor
+cmux config init [--path <path>]
+cmux sessions new <workspace> [provider] [-- <extra-provider-args>...]
+cmux sessions list
+cmux sessions send <session-id> <text> [--enter]
+cmux sessions capture <session-id>
+cmux sessions close <session-id>
 ```
 
 ## 配置
@@ -282,7 +282,7 @@ args = []
 env = {}
 ```
 
-Provider CLI 必须在明确的工作目录中启动。从微信使用 `cmx new /absolute/path codex`，或在本地使用 `cmx sessions new /absolute/path codex`。
+Provider CLI 必须在明确的工作目录中启动。从微信使用 `cmux new /absolute/path codex`，或在本地使用 `cmux sessions new /absolute/path codex`。
 
 ## 状态文件
 
@@ -314,10 +314,10 @@ history.jsonl
 
 ## 故障排查
 
-如果 `cmx daemon` 提示没有微信账号，请运行：
+如果 `cmux daemon` 提示没有微信账号，请运行：
 
 ```bash
-target/debug/cmx login wechat
+target/debug/cmux login wechat
 ```
 
 如果微信命令被忽略，请确认消息来自扫描登录二维码的同一个微信用户。
@@ -337,13 +337,13 @@ tmux -V
 运行完整本地检查：
 
 ```bash
-target/debug/cmx doctor
+target/debug/cmux doctor
 ```
 
 ## 仓库结构
 
 ```text
-crates/cmx/              # 面向用户的 cmx CLI
+crates/cmux/              # 面向用户的 cmux CLI
 crates/chatmuxx-core/    # config、daemon、sessions、tmux、providers、channels、state
 docs/design/             # 产品和架构设计说明
 docs/development/        # 实现文档、任务索引、测试策略

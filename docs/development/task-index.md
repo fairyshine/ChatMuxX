@@ -59,11 +59,11 @@ This slice should prove that ChatMuxX can create a managed tmux window, send tex
 
 The smallest WeChat slice:
 
-1. `cmx login wechat`
+1. `cmux login wechat`
 2. WeChat long polling
 3. owner authorization
-4. `cmx help`
-5. `cmx new /tmp shell`
+4. `cmux help`
+5. `cmux new /tmp shell`
 6. send raw shell command
 7. receive shell output
 

@@ -1,12 +1,12 @@
 [package]
-name = "cmx"
+name = "cmux"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "cmx"
+name = "cmux"
 path = "src/main.rs"
 
 [dependencies]

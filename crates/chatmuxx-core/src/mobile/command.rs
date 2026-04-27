@@ -40,8 +40,8 @@ pub fn parse_mobile_text(text: &str, flow_active: bool) -> ParsedInbound {
         return ParsedInbound::PlainText(String::new());
     }
 
-    if is_cmx_command(trimmed) {
-        return ParsedInbound::BridgeCommand(parse_cmx_command(trimmed));
+    if is_bridge_command(trimmed) {
+        return ParsedInbound::BridgeCommand(parse_bridge_command(trimmed));
     }
 
     if trimmed.starts_with('/') {
@@ -55,14 +55,14 @@ pub fn parse_mobile_text(text: &str, flow_active: bool) -> ParsedInbound {
     }
 }
 
-fn is_cmx_command(text: &str) -> bool {
-    text == "cmx" || text.strip_prefix("cmx ").is_some()
+fn is_bridge_command(text: &str) -> bool {
+    text == "cmux" || text.strip_prefix("cmux ").is_some()
 }
 
-fn parse_cmx_command(text: &str) -> MobileCommand {
+fn parse_bridge_command(text: &str) -> MobileCommand {
     let tokens = split_words(text);
     let mut args = tokens.into_iter();
-    let _cmx = args.next();
+    let _command_prefix = args.next();
     let Some(name) = args.next() else {
         return MobileCommand::Help;
     };
@@ -175,9 +175,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cmx_without_subcommand_becomes_help() {
+    fn cmux_without_subcommand_becomes_help() {
         assert_eq!(
-            parse_mobile_text("cmx", false),
+            parse_mobile_text("cmux", false),
             ParsedInbound::BridgeCommand(MobileCommand::Help)
         );
     }
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn new_command_parses_workspace_provider_and_extra_args() {
         assert_eq!(
-            parse_mobile_text("cmx new '/tmp/my project' claude -- --model opus", false),
+            parse_mobile_text("cmux new '/tmp/my project' claude -- --model opus", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 workspace: Some(PathBuf::from("/tmp/my project")),
                 provider: Some(ProviderKind::Claude),
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn provider_command_accepts_provider_name() {
         assert_eq!(
-            parse_mobile_text("cmx provider codex", false),
+            parse_mobile_text("cmux provider codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::Provider {
                 provider: Some(ProviderKind::Codex)
             })
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn close_command_accepts_optional_session_id() {
         assert_eq!(
-            parse_mobile_text("cmx close sess-1", false),
+            parse_mobile_text("cmux close sess-1", false),
             ParsedInbound::BridgeCommand(MobileCommand::Close {
                 session_id: Some(SessionId("sess-1".to_owned()))
             })
@@ -241,8 +241,8 @@ mod tests {
     #[test]
     fn split_words_handles_basic_quotes() {
         assert_eq!(
-            split_words("cmx new \"/tmp/a b\" shell"),
-            vec!["cmx", "new", "/tmp/a b", "shell"]
+            split_words("cmux new \"/tmp/a b\" shell"),
+            vec!["cmux", "new", "/tmp/a b", "shell"]
         );
     }
 }

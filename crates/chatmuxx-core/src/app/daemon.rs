@@ -32,6 +32,7 @@ use crate::{
 };
 
 const DISPLAY_FLUSH_INTERVAL_MS: u64 = 3_000;
+const COMPACT_DEDUPE_MIN_CHARS: usize = 30;
 
 #[derive(Clone, Debug)]
 struct InboundWeChatText {
@@ -53,7 +54,7 @@ pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
 
     let accounts: AccountState = load_json_or_default(&paths.accounts).await?;
     if accounts.wechat.is_empty() {
-        println!("No WeChat account found. Run `cmx login wechat` first.");
+        println!("No WeChat account found. Run `cmux login wechat` first.");
         return Ok(());
     }
 
@@ -238,7 +239,7 @@ async fn handle_wechat_text(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "还没有绑定的会话。发送 `cmx new /你的项目路径 codex` 创建 Codex 会话。",
+                    "还没有绑定的会话。发送 `cmux new /你的项目路径 codex` 创建 Codex 会话。",
                 )
                 .await?;
             }
@@ -279,7 +280,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmx new /项目路径 codex`",
+                    "用法：`cmux new /项目路径 codex`",
                 )
                 .await?;
                 return Ok(());
@@ -330,7 +331,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmx switch <session-id>`",
+                    "用法：`cmux switch <session-id>`",
                 )
                 .await?;
                 return Ok(());
@@ -398,7 +399,7 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                "切换 provider 请先用 `cmx close` 关闭当前会话，再用 `cmx new /路径 codex` 创建。",
+                "切换 provider 请先用 `cmux close` 关闭当前会话，再用 `cmux new /路径 codex` 创建。",
             )
             .await?;
         }
@@ -416,7 +417,7 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                &format!("未知 cmx 命令：{name}"),
+                &format!("未知 cmux 命令：{name}"),
             )
             .await?;
         }
@@ -521,13 +522,13 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
 
         let delivery = if should_flush_pending(&next_monitor, now_ms) {
             let body = next_monitor.pending_display_text.take().unwrap_or_default();
-            let footer = footer_to_send(
+            let footer = footer_for_display(
                 next_monitor.pending_footer_text.as_deref(),
                 next_monitor.last_footer_text.as_deref(),
             );
             let message = format_display_message(body, footer.as_deref());
-            if footer.is_some() {
-                next_monitor.last_footer_text = footer;
+            if let Some(pending_footer) = next_monitor.pending_footer_text.as_deref() {
+                next_monitor.last_footer_text = normalize_footer(pending_footer);
             }
             next_monitor.pending_footer_text = None;
             next_monitor.pending_since_ms = None;
@@ -751,12 +752,23 @@ fn is_redundant_outbound(candidate: &str, recent: &[String]) -> bool {
     if candidate.is_empty() {
         return true;
     }
+    let candidate_compact = compact_for_history_dedupe(&candidate);
 
     recent.iter().any(|previous| {
         let previous = normalize_for_history_dedupe(previous);
-        previous == candidate
+        if previous == candidate
             || previous.contains(&candidate)
             || (candidate.contains(&previous) && previous.chars().count() > 80)
+        {
+            return true;
+        }
+
+        let previous_compact = compact_for_history_dedupe(&previous);
+        candidate_compact.chars().count() > COMPACT_DEDUPE_MIN_CHARS
+            && (previous_compact == candidate_compact
+                || previous_compact.contains(&candidate_compact)
+                || (candidate_compact.contains(&previous_compact)
+                    && previous_compact.chars().count() > COMPACT_DEDUPE_MIN_CHARS))
     })
 }
 
@@ -778,6 +790,14 @@ fn remove_recent_overlap(candidate: &str, previous: &str) -> String {
     let previous_lines = normalized_history_lines(previous);
     if candidate_lines.is_empty() || previous_lines.is_empty() {
         return candidate.trim_matches('\n').trim_end().to_owned();
+    }
+
+    let candidate_compact = compact_lines(&candidate_lines);
+    let previous_compact = compact_lines(&previous_lines);
+    if candidate_compact.chars().count() > COMPACT_DEDUPE_MIN_CHARS
+        && previous_compact.contains(&candidate_compact)
+    {
+        return String::new();
     }
 
     if contains_line_window(&previous_lines, &candidate_lines) {
@@ -804,6 +824,13 @@ fn remove_recent_overlap(candidate: &str, previous: &str) -> String {
 
     for prefix_len in (1..candidate_lines.len()).rev() {
         if contains_line_window(&previous_lines, &candidate_lines[..prefix_len]) {
+            return candidate_lines[prefix_len..].join("\n");
+        }
+
+        let prefix_compact = compact_lines(&candidate_lines[..prefix_len]);
+        if prefix_compact.chars().count() > COMPACT_DEDUPE_MIN_CHARS
+            && previous_compact.contains(&prefix_compact)
+        {
             return candidate_lines[prefix_len..].join("\n");
         }
     }
@@ -903,9 +930,15 @@ fn should_flush_pending(state: &MonitorSessionState, now_ms: u64) -> bool {
     })
 }
 
-fn footer_to_send(pending_footer: Option<&str>, last_footer: Option<&str>) -> Option<String> {
-    let footer = pending_footer?.trim();
-    if footer.is_empty() || Some(footer) == last_footer {
+fn footer_for_display(pending_footer: Option<&str>, last_footer: Option<&str>) -> Option<String> {
+    pending_footer
+        .and_then(normalize_footer)
+        .or_else(|| last_footer.and_then(normalize_footer))
+}
+
+fn normalize_footer(footer: &str) -> Option<String> {
+    let footer = footer.trim();
+    if footer.is_empty() {
         None
     } else {
         Some(footer.to_owned())
@@ -929,6 +962,16 @@ fn normalize_for_history_dedupe(text: &str) -> String {
         .join("\n")
 }
 
+fn compact_for_history_dedupe(text: &str) -> String {
+    text.chars()
+        .filter(|ch| !ch.is_whitespace() && !is_separator_char(*ch))
+        .collect()
+}
+
+fn compact_lines(lines: &[String]) -> String {
+    compact_for_history_dedupe(&lines.join("\n"))
+}
+
 fn trim_for_chat(text: &str) -> String {
     const MAX_LINES: usize = 60;
     let lines = text.lines().collect::<Vec<_>>();
@@ -948,6 +991,13 @@ fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> 
     let previous = normalize_pane_text(previous, provider);
 
     if current == previous {
+        return None;
+    }
+    let current_compact = compact_for_history_dedupe(&current);
+    let previous_compact = compact_for_history_dedupe(&previous);
+    if current_compact.chars().count() > COMPACT_DEDUPE_MIN_CHARS
+        && (current_compact == previous_compact || previous_compact.contains(&current_compact))
+    {
         return None;
     }
     if let Some(delta) = current.strip_prefix(&previous) {
@@ -1179,7 +1229,14 @@ fn is_noisy_agent_ui_line(line: &str) -> bool {
         || trimmed.starts_with("⚠ Model metadata")
         || trimmed
             .chars()
-            .all(|ch| matches!(ch, '─' | '━' | '-' | ' '))
+            .all(|ch| is_separator_char(ch) || ch.is_whitespace())
+}
+
+fn is_separator_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '─' | '━' | '-' | '—' | '═' | '│' | '┃' | '┆' | '┊' | '║' | '╎' | '╏'
+    )
 }
 
 fn non_empty_delta(delta: &str) -> Option<String> {
@@ -1278,6 +1335,17 @@ mod tests {
     }
 
     #[test]
+    fn pane_delta_suppresses_terminal_reflow_only_changes() {
+        let delta = pane_delta(
+            Some("README.zh-CN.md\n列出会话、创建本地 shell 测试会话"),
+            "README.zh-C N.md\n列出 会话、创建本地 shell 测试会话",
+            ProviderKind::Codex,
+        );
+
+        assert_eq!(delta, None);
+    }
+
+    #[test]
     fn codex_pane_normalization_filters_spinner_status() {
         let text = normalize_pane_text("hello\n⠋ thinking\nworld", ProviderKind::Codex);
 
@@ -1305,10 +1373,17 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_footer_is_not_selected_for_sending() {
-        let footer = footer_to_send(Some("状态：thinking"), Some("状态：thinking"));
+    fn unchanged_footer_is_included_with_display_body() {
+        let footer = footer_for_display(Some("状态：thinking"), Some("状态：thinking"));
 
-        assert_eq!(footer, None);
+        assert_eq!(footer, Some("状态：thinking".to_owned()));
+    }
+
+    #[test]
+    fn last_footer_is_reused_when_current_pane_has_no_footer() {
+        let footer = footer_for_display(None, Some("gpt-5.5 high · ~/Code/ChatMuxX"));
+
+        assert_eq!(footer, Some("gpt-5.5 high · ~/Code/ChatMuxX".to_owned()));
     }
 
     #[test]
@@ -1449,5 +1524,31 @@ mod tests {
             suppress_recent_outbound_text("beta\ngamma\ndelta", &["alpha\nbeta\ngamma".to_owned()]);
 
         assert_eq!(text, Some("delta".to_owned()));
+    }
+
+    #[test]
+    fn recent_outbound_suppression_drops_reflowed_repeat() {
+        let text = suppress_recent_outbound_text(
+            "README.zh-C N.md\n列出 会话、创建本地 shell 测试会话\n这样新用户不只知道怎么 build",
+            &[
+                "README.zh-CN.md\n列出会话、创建本地 shell 测试会话\n这样新用户不只知道怎么 build"
+                    .to_owned(),
+            ],
+        );
+
+        assert_eq!(text, None);
+    }
+
+    #[test]
+    fn recent_outbound_suppression_keeps_suffix_after_reflowed_prefix() {
+        let text = suppress_recent_outbound_text(
+            "README.zh-C N.md\n列出 会话、创建本地 shell 测试会话\n这样新用户不只知道怎么 build\n新增内容",
+            &[
+                "README.zh-CN.md\n列出会话、创建本地 shell 测试会话\n这样新用户不只知道怎么 build"
+                    .to_owned(),
+            ],
+        );
+
+        assert_eq!(text, Some("新增内容".to_owned()));
     }
 }

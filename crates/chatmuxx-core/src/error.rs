@@ -65,10 +65,10 @@ pub enum ChatMuxXError {
     #[error("session has no tmux attachment: {0}")]
     SessionNotAttached(String),
 
-    #[error("wechat account is not logged in; run `cmx login wechat`")]
+    #[error("wechat account is not logged in; run `cmux login wechat`")]
     WeChatAccountMissing,
 
-    #[error("wechat account expired; run `cmx login wechat` again")]
+    #[error("wechat account expired; run `cmux login wechat` again")]
     WeChatAccountExpired,
 
     #[error("wechat context token is missing for conversation: {0}")]

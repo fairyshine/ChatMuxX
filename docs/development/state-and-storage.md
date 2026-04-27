@@ -14,7 +14,7 @@ Default state directory:
   monitor_state.json
   history.jsonl
   logs/
-    cmx.log
+    cmux.log
 ```
 
 Permissions:
@@ -24,7 +24,7 @@ Permissions:
 - files containing tokens or credentials: `0600`
 - non-sensitive state files: no broader than `0644`; prefer `0600` for simplicity in v0.1.
 
-`cmx doctor` should warn when permissions are too broad and may offer a fix later.
+`cmux doctor` should warn when permissions are too broad and may offer a fix later.
 
 ## `config.toml`
 

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "cmx", version, about = "ChatMuxX command line interface")]
+#[command(name = "cmux", version, about = "ChatMuxX command line interface")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

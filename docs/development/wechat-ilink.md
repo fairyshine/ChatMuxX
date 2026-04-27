@@ -69,7 +69,7 @@ Never log:
 
 ## QR Login Flow
 
-`cmx login wechat`:
+`cmux login wechat`:
 
 1. Create `~/.chatmuxx` if needed.
 2. Call `get_bot_qrcode`.

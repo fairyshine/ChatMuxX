@@ -19,8 +19,8 @@ Status: draft for v0.1 implementation planning.
 
 v0.1 的目标不是功能全，而是让 owner 可以真实用起来：
 
-- `cmx daemon` 前台运行，并创建/连接 `chatmuxx` tmux session。
-- `cmx login wechat` 通过 iLink HTTP 完成微信登录并保存账号状态。
+- `cmux daemon` 前台运行，并创建/连接 `chatmuxx` tmux session。
+- `cmux login wechat` 通过 iLink HTTP 完成微信登录并保存账号状态。
 - 微信文本消息可以创建、绑定、切换、关闭 ChatMuxX session。
 - ChatMuxX session 可以启动 Codex、Claude Code、Shell。
 - 手机端可以发送文本、provider slash command、截图、Esc、Enter、Ctrl-C。
@@ -31,7 +31,7 @@ v0.1 的目标不是功能全，而是让 owner 可以真实用起来：
 
 - Core is Rust-first.
 - WeChat adapter uses direct iLink HTTP only; no OpenClaw runtime dependency.
-- `cmx ...` is ChatMuxX mobile command space; `/...` is provider command space.
+- `cmux ...` is ChatMuxX mobile command space; `/...` is provider command space.
 - `ChatMuxXSession.id` is the stable identity; tmux ids are runtime metadata.
 - All tmux calls stay inside `tmux`.
 - All state file IO stays inside `state`.

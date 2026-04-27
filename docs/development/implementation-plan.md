@@ -6,23 +6,23 @@ This plan is written as implementation work packages. Each package should be sma
 
 ## Milestone A: Project Foundation
 
-Goal: the Rust workspace builds, `cmx` exists, and local config/state paths are established.
+Goal: the Rust workspace builds, `cmux` exists, and local config/state paths are established.
 
 ## A1. Create Rust Workspace
 
 Modules/files:
 
 - `Cargo.toml`
-- `crates/cmx/Cargo.toml`
-- `crates/cmx/src/main.rs`
-- `crates/cmx/src/cli.rs`
+- `crates/cmux/Cargo.toml`
+- `crates/cmux/src/main.rs`
+- `crates/cmux/src/cli.rs`
 - `crates/chatmuxx-core/Cargo.toml`
 - `crates/chatmuxx-core/src/lib.rs`
 - `crates/chatmuxx-core/src/error.rs`
 
 Tasks:
 
-- Create workspace with `cmx` binary crate and `chatmuxx-core` library crate.
+- Create workspace with `cmux` binary crate and `chatmuxx-core` library crate.
 - Add baseline dependencies:
   - `tokio`
   - `clap`
@@ -43,9 +43,9 @@ Tests:
 
 Acceptance:
 
-- `cmx --help` runs.
-- `cmx daemon --help`, `cmx login wechat --help`, `cmx doctor --help` run.
-- `chatmuxx-core` can be imported by `cmx`.
+- `cmux --help` runs.
+- `cmux daemon --help`, `cmux login wechat --help`, `cmux doctor --help` run.
+- `chatmuxx-core` can be imported by `cmux`.
 
 ## A2. Config Loader
 
@@ -63,7 +63,7 @@ Tasks:
   - tmux session: `chatmuxx`
   - poll interval: `1500ms`
   - provider commands: `codex`, `claude`, `bash`
-- Implement `cmx config init`.
+- Implement `cmux config init`.
 - Refuse to overwrite existing config unless a future `--force` option is added.
 
 Tests:
@@ -74,7 +74,7 @@ Tests:
 
 Acceptance:
 
-- `cmx config init` writes `~/.chatmuxx/config.toml`.
+- `cmux config init` writes `~/.chatmuxx/config.toml`.
 - loading config applies defaults predictably.
 
 ## A3. Logging and Redaction Foundation
@@ -117,7 +117,7 @@ Tasks:
 - Create state directory with `0700`.
 - Create sensitive files with `0600`.
 - Implement permission checks.
-- Add `cmx doctor` checks for state dir and account file permissions.
+- Add `cmux doctor` checks for state dir and account file permissions.
 
 Tests:
 
@@ -126,7 +126,7 @@ Tests:
 
 Acceptance:
 
-- `cmx doctor` reports state dir status.
+- `cmux doctor` reports state dir status.
 - state dir is created with restrictive permissions where supported.
 
 ## B2. Typed JSON Stores
@@ -237,7 +237,7 @@ Tests:
 
 Acceptance:
 
-- `cmx doctor` can verify tmux availability.
+- `cmux doctor` can verify tmux availability.
 - integration test cleans up its tmux session.
 
 ## Milestone D: Provider Layer
@@ -391,17 +391,17 @@ Modules/files:
 Tasks:
 
 - Parse mandatory v0.1 commands:
-  - `cmx help`
-  - `cmx new`
-  - `cmx sessions`
-  - `cmx switch`
-  - `cmx close`
-  - `cmx provider`
-  - `cmx screenshot`
-  - `cmx esc`
-  - `cmx interrupt`
-  - `cmx enter`
-  - `cmx recover`
+  - `cmux help`
+  - `cmux new`
+  - `cmux sessions`
+  - `cmux switch`
+  - `cmux close`
+  - `cmux provider`
+  - `cmux screenshot`
+  - `cmux esc`
+  - `cmux interrupt`
+  - `cmux enter`
+  - `cmux recover`
 - Parse provider slash commands as `/...`.
 - Parse provider extra args after `--`.
 - Keep plain text untouched.
@@ -410,8 +410,8 @@ Tests:
 
 - direct command parse cases.
 - `/help` remains provider slash command.
-- `cmx new /path codex -- --foo` preserves extra args.
-- unknown `cmx` command returns clear error/help.
+- `cmux new /path codex -- --foo` preserves extra args.
+- unknown `cmux` command returns clear error/help.
 
 Acceptance:
 
@@ -427,7 +427,7 @@ Modules/files:
 Tasks:
 
 - Implement active flow model.
-- Implement text-first `cmx new` flow.
+- Implement text-first `cmux new` flow.
 - Implement session switch flow.
 - Implement destructive confirmation flow.
 - Support `yes/no`, `cancel`, and numbered choices.
@@ -435,10 +435,10 @@ Tasks:
 
 Tests:
 
-- `cmx new` with missing provider asks provider.
-- `cmx close` requires confirmation.
-- `cmx interrupt` requires confirmation.
-- `cmx esc` and `cmx enter` bypass confirmation.
+- `cmux new` with missing provider asks provider.
+- `cmux close` requires confirmation.
+- `cmux interrupt` requires confirmation.
+- `cmux esc` and `cmux enter` bypass confirmation.
 
 Acceptance:
 
@@ -455,7 +455,7 @@ Tasks:
 
 - Authorize owner.
 - Route unbound conversation to onboarding.
-- Route `cmx ...` to bridge command actions.
+- Route `cmux ...` to bridge command actions.
 - Route `/...` to active provider.
 - Route plain text to active provider.
 - Emit delivery and history actions.
@@ -509,7 +509,7 @@ Modules/files:
 
 Tasks:
 
-- Implement `cmx login wechat`.
+- Implement `cmux login wechat`.
 - Render QR in terminal.
 - Poll login status.
 - Persist account credentials.
@@ -617,7 +617,7 @@ Tasks:
 
 - Map `ProviderEvent` to outbound text.
 - Split long text.
-- Truncate with `cmx screenshot` hint.
+- Truncate with `cmux screenshot` hint.
 - Throttle status messages.
 - Render confirmation requests as plain text fallback.
 - Send through channel adapter.
@@ -641,7 +641,7 @@ Modules/files:
 
 Tasks:
 
-- Implement `cmx screenshot` from active session.
+- Implement `cmux screenshot` from active session.
 - Capture pane.
 - v0.1 may send text capture first.
 - Add image renderer later within same command path.
@@ -657,7 +657,7 @@ Acceptance:
 
 ## Milestone H: Daemon Orchestration
 
-Goal: `cmx daemon` wires all modules and supports the v0.1 manual workflow.
+Goal: `cmux daemon` wires all modules and supports the v0.1 manual workflow.
 
 ## H1. App Wiring
 
@@ -685,8 +685,8 @@ Tests:
 
 Acceptance:
 
-- `cmx daemon` starts without WeChat account and tells user to run `cmx login wechat`.
-- `cmx daemon` can process fake channel events in tests.
+- `cmux daemon` starts without WeChat account and tells user to run `cmux login wechat`.
+- `cmux daemon` can process fake channel events in tests.
 
 ## H2. Action Executor
 
@@ -715,17 +715,17 @@ Acceptance:
 
 Manual scenario:
 
-1. `cmx config init`
-2. `cmx doctor`
-3. `cmx login wechat`
-4. `cmx daemon`
-5. send `cmx help`
-6. send `cmx new /tmp shell`
+1. `cmux config init`
+2. `cmux doctor`
+3. `cmux login wechat`
+4. `cmux daemon`
+5. send `cmux help`
+6. send `cmux new /tmp shell`
 7. send `pwd`
 8. receive shell output
-9. send `cmx sessions`
-10. send `cmx screenshot`
-11. send `cmx close`
+9. send `cmux sessions`
+10. send `cmux screenshot`
+11. send `cmux close`
 12. confirm close
 
 Acceptance:
@@ -749,7 +749,7 @@ Tasks:
 
 Acceptance:
 
-- `cmx doctor` gives actionable output.
+- `cmux doctor` gives actionable output.
 
 ## I2. Error Messages and Backoff
 
@@ -762,7 +762,7 @@ Tasks:
 Acceptance:
 
 - transient network failures do not kill daemon immediately.
-- expired account tells user to run `cmx login wechat`.
+- expired account tells user to run `cmux login wechat`.
 
 ## I3. User Docs
 
@@ -770,7 +770,7 @@ Tasks:
 
 - update root README quick start.
 - document v0.1 commands.
-- document `cmx` vs provider `/...` command separation.
+- document `cmux` vs provider `/...` command separation.
 - document no hooks/plugins/config changes for Codex/Claude.
 
 Acceptance:
