@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "cmux",
+    name = "cmx",
     version,
     about = "ChatMuxX command line interface",
     disable_help_subcommand = true
@@ -28,6 +28,8 @@ pub enum Command {
     /// Validate local configuration and dependencies.
     #[command(alias = "check")]
     Doctor,
+    /// Update cmx from the installed ChatMuxX git checkout.
+    Update(UpdateArgs),
     /// Manage local configuration.
     #[command(alias = "cfg")]
     Config(ConfigArgs),
@@ -70,6 +72,16 @@ pub struct DaemonArgs {
     /// Optional config file path.
     #[arg(long)]
     pub config: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct UpdateArgs {
+    /// Source checkout path. Defaults to ~/.chatmuxx/src/ChatMuxX.
+    #[arg(long)]
+    pub source_dir: Option<PathBuf>,
+    /// Git branch to update from. Defaults to main.
+    #[arg(long)]
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Args)]

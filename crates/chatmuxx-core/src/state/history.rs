@@ -228,7 +228,7 @@ mod tests {
             &path,
             HistoryEvent::BridgeCommand {
                 conversation_id: "conv_1".to_owned(),
-                command: "cmux help".to_owned(),
+                command: "cmx help".to_owned(),
                 at: "2026-04-26T00:00:00Z".to_owned(),
             },
         )

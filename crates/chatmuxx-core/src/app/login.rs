@@ -47,7 +47,7 @@ pub async fn wechat() -> Result<()> {
             }
             QrLoginStatus::Expired => {
                 return Err(ChatMuxXError::WeChatProtocol(
-                    "QR code expired; run `cmux login wechat` again".to_owned(),
+                    "QR code expired; run `cmx login wechat` again".to_owned(),
                 ));
             }
             QrLoginStatus::Cancelled => {

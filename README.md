@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 ChatMuxX lets you control local Codex, Claude Code, or shell sessions from WeChat.
 
-The common flow is simple: run `cmux daemon` on your computer, send a message from WeChat, ChatMuxX forwards it to Codex running inside local tmux, then sends Codex output back to WeChat.
+The common flow is simple: run `cmx daemon` on your computer, send a message from WeChat, ChatMuxX forwards it to Codex running inside local tmux, then sends Codex output back to WeChat.
 
 ChatMuxX does not install or modify Codex/Claude hooks, plugins, skills, or config files.
 
@@ -13,7 +13,7 @@ ChatMuxX does not install or modify Codex/Claude hooks, plugins, skills, or conf
 Send this from WeChat:
 
 ```text
-cmux n --id main /Users/you/Code/your-project codex
+cmx n --id main /Users/you/Code/your-project codex
 ```
 
 Then send a normal message:
@@ -32,7 +32,7 @@ Recommended one-line install:
 curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
 ```
 
-The installer downloads the source and runs `cargo install`. After that, you get the `cmux` command.
+The installer clones the repo into `~/.chatmuxx/src/ChatMuxX`, then runs `cargo install`. After that, you get the `cmx` command.
 
 If you want to inspect the installer first:
 
@@ -42,10 +42,11 @@ less /tmp/chatmuxx-install.sh
 sh /tmp/chatmuxx-install.sh
 ```
 
-If a new terminal cannot find `cmux`, add this to your shell profile:
+If a new terminal cannot find `cmx`, the installer tells you to manually add one of these lines to `~/.zshrc`:
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
+alias cmx="$HOME/.cargo/bin/cmx"
 ```
 
 ## Requirements
@@ -70,13 +71,13 @@ codex --version
 1. Check your local setup:
 
 ```bash
-cmux doctor
+cmx doctor
 ```
 
 2. Log in to WeChat:
 
 ```bash
-cmux login wechat
+cmx login wechat
 ```
 
 Scan the QR code in your terminal.
@@ -84,7 +85,7 @@ Scan the QR code in your terminal.
 3. Start ChatMuxX:
 
 ```bash
-cmux daemon
+cmx daemon
 ```
 
 Keep this process running. It receives WeChat messages, controls tmux, and sends replies.
@@ -92,7 +93,7 @@ Keep this process running. It receives WeChat messages, controls tmux, and sends
 4. Create a Codex session from WeChat:
 
 ```text
-cmux n --id main /Users/you/Code/your-project codex
+cmx n --id main /Users/you/Code/your-project codex
 ```
 
 Replace the path with your real project directory.
@@ -103,21 +104,21 @@ Replace the path with your real project directory.
 Explain this project
 ```
 
-Normal text goes to Codex. Text starting with `cmux` controls ChatMuxX.
+Normal text goes to Codex. Text starting with `cmx` controls ChatMuxX.
 
 ## WeChat Commands
 
 ```text
-cmux h                         help
-cmux n <project-path> codex     create a Codex session
-cmux ls                        list sessions
-cmux sw <session-id>           switch session
-cmux mv <new-id>               rename current session
-cmux ss                        show current terminal text
-cmux i                         interrupt current task, like Ctrl-C
-cmux e                         send Enter
-cmux esc                       send Esc
-cmux rm                        close current session
+cmx h                         help
+cmx n <project-path> codex     create a Codex session
+cmx ls                        list sessions
+cmx sw <session-id>           switch session
+cmx mv <new-id>               rename current session
+cmx ss                        show current terminal text
+cmx i                         interrupt current task, like Ctrl-C
+cmx e                         send Enter
+cmx esc                       send Esc
+cmx rm                        close current session
 ```
 
 Provider-native `/...` commands are forwarded to Codex or Claude. ChatMuxX does not use `/` commands.
@@ -127,19 +128,19 @@ Provider-native `/...` commands are forwarded to Codex or Claude. ChatMuxX does 
 You can test without WeChat:
 
 ```bash
-cmux n --id test /tmp shell
-cmux ls
-cmux p test "echo hello" --enter
-cmux cap test
-cmux rm test
+cmx n --id test /tmp shell
+cmx ls
+cmx p test "echo hello" --enter
+cmx cap test
+cmx rm test
 ```
 
 Local pane-control commands usually need a session id:
 
 ```bash
-cmux i main
-cmux e main
-cmux esc main
+cmx i main
+cmx e main
+cmx esc main
 ```
 
 ## Update
@@ -147,8 +148,12 @@ cmux esc main
 Run the installer again:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
+cmx update
 ```
+
+`cmx update` runs `git pull --ff-only` inside `~/.chatmuxx/src/ChatMuxX`, then reinstalls `cmx`.
+
+If `cmx update` says the source directory is missing, run the installer once.
 
 ## Local State
 
@@ -171,7 +176,7 @@ Common files:
 ChatMuxX can already run the basic WeChat-to-local-Codex flow, but it is still early:
 
 - The daemon runs in the foreground; it is not installed as a system service yet.
-- `cmux ss` returns text, not a real screenshot.
+- `cmx ss` returns text, not a real screenshot.
 - Claude provider, recovery, and multi-user policies are still being improved.
 
 Developer and design docs live in [docs](docs/).

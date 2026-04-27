@@ -54,7 +54,7 @@ pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
 
     let accounts: AccountState = load_json_or_default(&paths.accounts).await?;
     if accounts.wechat.is_empty() {
-        println!("No WeChat account found. Run `cmux login wechat` first.");
+        println!("No WeChat account found. Run `cmx login wechat` first.");
         return Ok(());
     }
 
@@ -240,7 +240,7 @@ async fn handle_wechat_text(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "还没有绑定的会话。发送 `cmux new /你的项目路径 codex` 创建 Codex 会话。",
+                    "还没有绑定的会话。发送 `cmx new /你的项目路径 codex` 创建 Codex 会话。",
                 )
                 .await?;
             }
@@ -281,7 +281,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmux new --id main /项目路径 codex`",
+                    "用法：`cmx new --id main /项目路径 codex`",
                 )
                 .await?;
                 return Ok(());
@@ -291,7 +291,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "项目路径解析失败：`--id` 要放在 `cmux new` 后面，示例：`cmux new --id main /项目路径 codex`。",
+                    "项目路径解析失败：`--id` 要放在 `cmx new` 后面，示例：`cmx new --id main /项目路径 codex`。",
                 )
                 .await?;
                 return Ok(());
@@ -328,7 +328,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmux switch <session-id>`",
+                    "用法：`cmx switch <session-id>`",
                 )
                 .await?;
                 return Ok(());
@@ -373,7 +373,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmux rename [session-id] <new-id>`",
+                    "用法：`cmx rename [session-id] <new-id>`",
                 )
                 .await?;
                 return Ok(());
@@ -442,7 +442,7 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                "切换 provider 请先用 `cmux close` 关闭当前会话，再用 `cmux new /路径 codex` 创建。",
+                "切换 provider 请先用 `cmx close` 关闭当前会话，再用 `cmx new /路径 codex` 创建。",
             )
             .await?;
         }
@@ -460,7 +460,7 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                &format!("未知 cmux 命令：{name}"),
+                &format!("未知 cmx 命令：{name}"),
             )
             .await?;
         }
@@ -816,7 +816,7 @@ fn upsert_conversation(state: &mut AppState, record: ConversationRecord) {
 }
 
 fn help_text() -> &'static str {
-    "ChatMuxX 命令：\ncmux new --id main /项目路径 codex\ncmux sessions\ncmux switch <session-id>\ncmux rename [session-id] <new-id>\ncmux screenshot\ncmux close\ncmux prune\n普通文字会发送给当前 Codex 会话。"
+    "ChatMuxX 命令：\ncmx new --id main /项目路径 codex\ncmx sessions\ncmx switch <session-id>\ncmx rename [session-id] <new-id>\ncmx screenshot\ncmx close\ncmx prune\n普通文字会发送给当前 Codex 会话。"
 }
 
 fn format_session_list(
@@ -1208,7 +1208,7 @@ fn is_shell_prompt_or_echo_line(line: &str) -> bool {
         return true;
     }
 
-    if line.starts_with("cmux> ") || line == "cmux>" {
+    if line.starts_with("cmx> ") || line == "cmx>" {
         return true;
     }
 

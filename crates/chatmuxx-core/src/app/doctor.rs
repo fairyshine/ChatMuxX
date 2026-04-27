@@ -33,7 +33,7 @@ pub async fn run() -> Result<()> {
             println!("- config parse: error ({err})");
         }
         Err(_) => {
-            println!("- config parse: skipped (run `cmux config init`)");
+            println!("- config parse: skipped (run `cmx config init`)");
             print_command_check("tmux", "tmux");
         }
     }

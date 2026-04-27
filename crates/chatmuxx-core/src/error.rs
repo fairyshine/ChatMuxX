@@ -44,6 +44,9 @@ pub enum ChatMuxXError {
     #[error("command not found: {0}")]
     CommandNotFound(String),
 
+    #[error("external command failed: {command} ({code_text})", code_text = code.map_or_else(|| "terminated by signal".to_owned(), |code| format!("exit code {code}")))]
+    ExternalCommandFailed { command: String, code: Option<i32> },
+
     #[error("tmux command failed: {command} ({stderr})")]
     TmuxCommandFailed { command: String, stderr: String },
 
@@ -71,13 +74,18 @@ pub enum ChatMuxXError {
     #[error("session id already exists: {0}")]
     SessionIdAlreadyExists(String),
 
+    #[error(
+        "ChatMuxX source directory is missing or is not a git repo: {0}; run the installer first"
+    )]
+    UpdateSourceMissing(PathBuf),
+
     #[error("session has no tmux attachment: {0}")]
     SessionNotAttached(String),
 
-    #[error("wechat account is not logged in; run `cmux login wechat`")]
+    #[error("wechat account is not logged in; run `cmx login wechat`")]
     WeChatAccountMissing,
 
-    #[error("wechat account expired; run `cmux login wechat` again")]
+    #[error("wechat account expired; run `cmx login wechat` again")]
     WeChatAccountExpired,
 
     #[error("wechat context token is missing for conversation: {0}")]

@@ -324,7 +324,7 @@ Do not implement in v0.1 unless needed for text flow:
 
 ## Mobile Command Parser
 
-`cmux ...` is the ChatMuxX mobile command space.
+`cmx ...` is the ChatMuxX mobile command space.
 
 ```rust
 pub enum MobileCommand {
@@ -359,7 +359,7 @@ pub fn parse_mobile_text(text: &str, flow: Option<&ActiveFlow>) -> ParsedInbound
 
 Routing rules:
 
-- `cmux ...` becomes `BridgeCommand`.
+- `cmx ...` becomes `BridgeCommand`.
 - `/...` becomes `ProviderSlashCommand`.
 - plain text becomes `PlainText` unless an onboarding/confirmation flow is active.
 - active flows may interpret numbered replies or short tokens as `FlowReply`.
@@ -401,7 +401,7 @@ pub enum ProviderInput {
 Router responsibilities:
 
 - authorize sender before producing side-effect actions.
-- parse `cmux ...` bridge commands.
+- parse `cmx ...` bridge commands.
 - route `/...` to the active provider as provider-native slash commands.
 - route plain text to the active provider when a conversation is bound.
 - start onboarding when a conversation is unbound.
@@ -483,15 +483,15 @@ pub struct ConfirmationRequest {
 
 v0.1 confirmation rules:
 
-- `cmux close`, `cmux interrupt`, provider replacement, and recovery replacement/fresh actions require confirmation.
-- `cmux esc` and `cmux enter` do not require confirmation.
+- `cmx close`, `cmx interrupt`, provider replacement, and recovery replacement/fresh actions require confirmation.
+- `cmx esc` and `cmx enter` do not require confirmation.
 - flows must work through plain text replies such as `1`, `yes`, `no`, or `cancel`.
 
-`cmux new` text behavior:
+`cmx new` text behavior:
 
-- `cmux new /absolute/path codex` should create a Codex session in the given workspace when authorization and validation pass.
-- `cmux new /absolute/path claude -- --model opus` may pass provider extra args after a delimiter if supported by the parser.
-- `cmux new` without enough arguments starts a text-first onboarding flow.
+- `cmx new /absolute/path codex` should create a Codex session in the given workspace when authorization and validation pass.
+- `cmx new /absolute/path claude -- --model opus` may pass provider extra args after a delimiter if supported by the parser.
+- `cmx new` without enough arguments starts a text-first onboarding flow.
 - The onboarding flow must work without buttons: show numbered provider choices, recent/default workspace suggestions, and allow direct path input.
 - Complex directory browsing is deferred.
 
@@ -853,7 +853,7 @@ Delivery rules:
 
 Screenshot delivery:
 
-- `cmux screenshot` is modeled as a bridge command that asks `tmux` to capture pane text and a renderer to produce an image.
+- `cmx screenshot` is modeled as a bridge command that asks `tmux` to capture pane text and a renderer to produce an image.
 - The first implementation may send text capture if image rendering is not ready.
 - Once image rendering exists, delivery sends `OutboundMessage::Image`.
 

@@ -18,6 +18,9 @@ async fn main() -> anyhow::Result<()> {
             LoginChannel::Wechat => chatmuxx_core::app::login::wechat().await?,
         },
         Command::Doctor => chatmuxx_core::app::doctor::run().await?,
+        Command::Update(args) => {
+            chatmuxx_core::app::update::run(args.source_dir, args.branch).await?
+        }
         Command::Config(args) => match args.command {
             ConfigCommand::Init(init) => chatmuxx_core::app::config_init::run(init.path).await?,
         },

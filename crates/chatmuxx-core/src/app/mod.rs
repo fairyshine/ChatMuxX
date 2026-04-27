@@ -3,3 +3,4 @@ pub mod daemon;
 pub mod doctor;
 pub mod login;
 pub mod sessions;
+pub mod update;

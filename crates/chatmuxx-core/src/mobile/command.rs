@@ -73,7 +73,7 @@ pub fn parse_mobile_text(text: &str, flow_active: bool) -> ParsedInbound {
 }
 
 fn is_bridge_command(text: &str) -> bool {
-    text == "cmux" || text.strip_prefix("cmux ").is_some()
+    text == "cmx" || text.strip_prefix("cmx ").is_some()
 }
 
 fn parse_bridge_command(text: &str) -> MobileCommand {
@@ -248,9 +248,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cmux_without_subcommand_becomes_help() {
+    fn cmx_without_subcommand_becomes_help() {
         assert_eq!(
-            parse_mobile_text("cmux", false),
+            parse_mobile_text("cmx", false),
             ParsedInbound::BridgeCommand(MobileCommand::Help)
         );
     }
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn new_command_parses_workspace_provider_and_extra_args() {
         assert_eq!(
-            parse_mobile_text("cmux new '/tmp/my project' claude -- --model opus", false),
+            parse_mobile_text("cmx new '/tmp/my project' claude -- --model opus", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: None,
                 workspace: Some(PathBuf::from("/tmp/my project")),
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn new_command_parses_custom_session_id() {
         assert_eq!(
-            parse_mobile_text("cmux new --id main /tmp/project codex", false),
+            parse_mobile_text("cmx new --id main /tmp/project codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: Some(SessionId("main".to_owned())),
                 workspace: Some(PathBuf::from("/tmp/project")),
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn new_command_parses_custom_session_id_after_provider() {
         assert_eq!(
-            parse_mobile_text("cmux new /tmp/project codex --id main", false),
+            parse_mobile_text("cmx new /tmp/project codex --id main", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: Some(SessionId("main".to_owned())),
                 workspace: Some(PathBuf::from("/tmp/project")),
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn sessions_new_command_parses_like_new() {
         assert_eq!(
-            parse_mobile_text("cmux sessions new --id main /tmp/project codex", false),
+            parse_mobile_text("cmx sessions new --id main /tmp/project codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: Some(SessionId("main".to_owned())),
                 workspace: Some(PathBuf::from("/tmp/project")),
@@ -330,7 +330,7 @@ mod tests {
             }))
         );
         assert_eq!(
-            parse_mobile_text("cmux s n --id main /tmp/project codex", false),
+            parse_mobile_text("cmx s n --id main /tmp/project codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: Some(SessionId("main".to_owned())),
                 workspace: Some(PathBuf::from("/tmp/project")),
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn short_aliases_parse_to_mobile_commands() {
         assert_eq!(
-            parse_mobile_text("cmux n /tmp/project codex", false),
+            parse_mobile_text("cmx n /tmp/project codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
                 id: None,
                 workspace: Some(PathBuf::from("/tmp/project")),
@@ -352,15 +352,15 @@ mod tests {
             }))
         );
         assert_eq!(
-            parse_mobile_text("cmux ss", false),
+            parse_mobile_text("cmx ss", false),
             ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
         );
         assert_eq!(
-            parse_mobile_text("cmux i", false),
+            parse_mobile_text("cmx i", false),
             ParsedInbound::BridgeCommand(MobileCommand::Interrupt)
         );
         assert_eq!(
-            parse_mobile_text("cmux e", false),
+            parse_mobile_text("cmx e", false),
             ParsedInbound::BridgeCommand(MobileCommand::Enter)
         );
     }
@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn provider_command_accepts_provider_name() {
         assert_eq!(
-            parse_mobile_text("cmux provider codex", false),
+            parse_mobile_text("cmx provider codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::Provider {
                 provider: Some(ProviderKind::Codex)
             })
@@ -378,11 +378,11 @@ mod tests {
     #[test]
     fn sessions_list_command_is_a_sessions_command() {
         assert_eq!(
-            parse_mobile_text("cmux sessions list", false),
+            parse_mobile_text("cmx sessions list", false),
             ParsedInbound::BridgeCommand(MobileCommand::Sessions)
         );
         assert_eq!(
-            parse_mobile_text("cmux list", false),
+            parse_mobile_text("cmx list", false),
             ParsedInbound::BridgeCommand(MobileCommand::Sessions)
         );
     }
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn prune_command_is_parsed() {
         assert_eq!(
-            parse_mobile_text("cmux prune", false),
+            parse_mobile_text("cmx prune", false),
             ParsedInbound::BridgeCommand(MobileCommand::Prune)
         );
     }
@@ -398,11 +398,11 @@ mod tests {
     #[test]
     fn capture_aliases_parse_to_screenshot() {
         assert_eq!(
-            parse_mobile_text("cmux cap", false),
+            parse_mobile_text("cmx cap", false),
             ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
         );
         assert_eq!(
-            parse_mobile_text("cmux sessions capture", false),
+            parse_mobile_text("cmx sessions capture", false),
             ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
         );
     }
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn rename_command_with_one_arg_renames_active_session() {
         assert_eq!(
-            parse_mobile_text("cmux rename main", false),
+            parse_mobile_text("cmx rename main", false),
             ParsedInbound::BridgeCommand(MobileCommand::Rename {
                 session_id: None,
                 new_id: Some(SessionId("main".to_owned())),
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn rename_command_with_two_args_renames_given_session() {
         assert_eq!(
-            parse_mobile_text("cmux rename old main", false),
+            parse_mobile_text("cmx rename old main", false),
             ParsedInbound::BridgeCommand(MobileCommand::Rename {
                 session_id: Some(SessionId("old".to_owned())),
                 new_id: Some(SessionId("main".to_owned())),
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn close_command_accepts_optional_session_id() {
         assert_eq!(
-            parse_mobile_text("cmux close sess-1", false),
+            parse_mobile_text("cmx close sess-1", false),
             ParsedInbound::BridgeCommand(MobileCommand::Close {
                 session_id: Some(SessionId("sess-1".to_owned()))
             })
@@ -442,8 +442,8 @@ mod tests {
     #[test]
     fn split_words_handles_basic_quotes() {
         assert_eq!(
-            split_words("cmux new \"/tmp/a b\" shell"),
-            vec!["cmux", "new", "/tmp/a b", "shell"]
+            split_words("cmx new \"/tmp/a b\" shell"),
+            vec!["cmx", "new", "/tmp/a b", "shell"]
         );
     }
 }

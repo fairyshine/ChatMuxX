@@ -80,7 +80,7 @@ Initial Rust module direction:
 - `monitor`: output polling, offset tracking, and normalized events.
 - `delivery`: outbound message rendering, splitting, action fallback, and rate limits.
 - `state`: local state files, atomic writes, and migrations.
-- `cli`: command-line entrypoints exposed through the `cmux` binary.
+- `cli`: command-line entrypoints exposed through the `cmx` binary.
 
 ## Core Modules
 
@@ -135,11 +135,11 @@ Authorization rules for v0.1:
 
 High-impact action confirmation:
 
-- `cmux close` requires confirmation.
+- `cmx close` requires confirmation.
 - Provider replacement requires confirmation.
 - Recovery replacement/fresh actions require confirmation.
-- `cmux interrupt` requires confirmation in v0.1.
-- `cmux esc` and `cmux enter` do not require confirmation.
+- `cmx interrupt` requires confirmation in v0.1.
+- `cmx esc` and `cmx enter` do not require confirmation.
 
 ### Session Manager
 
@@ -236,7 +236,7 @@ v0.1 delivery behavior:
 - Send primary assistant output as original text where possible.
 - Throttle status updates to avoid chat spam.
 - Split long output into multiple messages before truncating.
-- If output remains too long, truncate and hint that the user can run `cmux screenshot` to inspect the current terminal.
+- If output remains too long, truncate and hint that the user can run `cmx screenshot` to inspect the current terminal.
 - Do not automatically summarize output in v0.1.
 
 ### State Store
@@ -276,7 +276,7 @@ Security and redaction:
 - Runtime logs must not include tokens, `Authorization` headers, `context_token`, `typing_ticket`, upload URLs, or raw credential payloads.
 - Chat/session history may store user inputs, provider outputs, and session lifecycle events, but must not store credential fields or sensitive protocol headers.
 - Sensitive IDs in logs should be masked where practical.
-- `cmux doctor` should check state directory and credential file permissions.
+- `cmx doctor` should check state directory and credential file permissions.
 
 Future storage direction:
 
@@ -286,24 +286,24 @@ Future storage direction:
 
 ## CLI Surface
 
-The project name is ChatMuxX. The CLI binary should use the short command name `cmux`.
+The project name is ChatMuxX. The CLI binary should use the short command name `cmx`.
 
 Initial v0.1 commands:
 
-- `cmux daemon`: run the ChatMuxX daemon in the foreground. It should create or attach the managed `chatmuxx` tmux session from any terminal.
-- `cmux login wechat`: start WeChat QR login and persist iLink account credentials.
-- `cmux doctor`: validate config, tmux availability, provider commands, state files, and WeChat login status.
-- `cmux config init`: create an initial `config.toml`.
-- `cmux sessions list`: list known ChatMuxX sessions and managed tmux windows.
-- `cmux sessions close <session-id>`: close a managed session/window.
+- `cmx daemon`: run the ChatMuxX daemon in the foreground. It should create or attach the managed `chatmuxx` tmux session from any terminal.
+- `cmx login wechat`: start WeChat QR login and persist iLink account credentials.
+- `cmx doctor`: validate config, tmux availability, provider commands, state files, and WeChat login status.
+- `cmx config init`: create an initial `config.toml`.
+- `cmx sessions list`: list known ChatMuxX sessions and managed tmux windows.
+- `cmx sessions close <session-id>`: close a managed session/window.
 
 Future commands:
 
-- `cmux logout wechat`
-- `cmux sessions switch <session-id>`
-- `cmux sessions recover <session-id>`
-- `cmux state migrate`
-- `cmux connector run <name>`
+- `cmx logout wechat`
+- `cmx sessions switch <session-id>`
+- `cmx sessions recover <session-id>`
+- `cmx state migrate`
+- `cmx connector run <name>`
 
 Service installation through launchd/systemd is deferred until after v0.1.
 
@@ -313,30 +313,30 @@ Mobile chat commands must be clearly separated from provider-native commands.
 
 ccgram uses Telegram bot-native `/...` commands first, then forwards unknown `/...` commands to the current provider. That works for Telegram, but it mixes bridge commands with Claude/Codex slash commands and is not a good fit for ChatMuxX's multi-channel design.
 
-ChatMuxX should use `cmux ...` as the canonical mobile command prefix:
+ChatMuxX should use `cmx ...` as the canonical mobile command prefix:
 
-- `cmux help`
-- `cmux new`
-- `cmux sessions`
-- `cmux switch`
-- `cmux close`
-- `cmux screenshot`
-- `cmux esc`
-- `cmux interrupt`
-- `cmux enter`
-- `cmux provider`
-- `cmux recover`
+- `cmx help`
+- `cmx new`
+- `cmx sessions`
+- `cmx switch`
+- `cmx close`
+- `cmx screenshot`
+- `cmx esc`
+- `cmx interrupt`
+- `cmx enter`
+- `cmx provider`
+- `cmx recover`
 
 These commands are mandatory for v0.1. File, live-view, voice, and rich command-discovery commands are deferred.
 
 Command routing rules:
 
-- Messages beginning with `cmux ` are ChatMuxX bridge commands.
+- Messages beginning with `cmx ` are ChatMuxX bridge commands.
 - Messages beginning with `/` are provider-native slash commands and should be forwarded to the active provider when a session is bound.
 - Plain text that is not in an active ChatMuxX UI flow is forwarded to the active provider.
 - During onboarding, recovery, or session selection flows, numbered replies and short action tokens are interpreted as ChatMuxX actions.
-- `/cmux ...` may be accepted as an optional alias on channels that strongly encourage slash commands, but `cmux ...` remains the portable canonical form.
-- ChatMuxX help text should teach users to use `cmux help` for bridge commands and provider-native `/help` for the active CLI when supported.
+- `/cmx ...` may be accepted as an optional alias on channels that strongly encourage slash commands, but `cmx ...` remains the portable canonical form.
+- ChatMuxX help text should teach users to use `cmx help` for bridge commands and provider-native `/help` for the active CLI when supported.
 
 ## Inbound Flow
 

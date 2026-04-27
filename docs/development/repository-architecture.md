@@ -10,7 +10,7 @@ ChatMuxX should start as a small Rust workspace with one binary crate and one co
 ChatMuxX/
   Cargo.toml
   crates/
-    cmux/
+    cmx/
       Cargo.toml
       src/
         main.rs
@@ -44,16 +44,16 @@ ChatMuxX/
 
 Why two crates:
 
-- `crates/cmux` owns CLI parsing, terminal output, and process entrypoints.
+- `crates/cmx` owns CLI parsing, terminal output, and process entrypoints.
 - `crates/chatmuxx-core` owns reusable daemon logic, traits, models, adapters, and tests.
-- `chatmuxx-core` is the shared core for the foreground `cmux daemon` now and for future launchd/systemd service wrappers later.
+- `chatmuxx-core` is the shared core for the foreground `cmx daemon` now and for future launchd/systemd service wrappers later.
 - Future external connectors or libraries can depend on `chatmuxx-core` without depending on CLI code.
 
 Naming notes:
 
 - `chatmuxx-core` follows common Rust workspace naming for a reusable core library crate.
 - Rust code imports this crate as `chatmuxx_core`.
-- `crates/cmux` is named after the user-facing binary command.
+- `crates/cmx` is named after the user-facing binary command.
 - Future crates can follow the same pattern, for example `chatmuxx-connector-protocol` or `chatmuxx-test-support`.
 
 ## Root `Cargo.toml`
@@ -63,13 +63,13 @@ The root should be a workspace:
 ```toml
 [workspace]
 members = [
-  "crates/cmux",
+  "crates/cmx",
   "crates/chatmuxx-core",
 ]
 resolver = "2"
 ```
 
-## Binary Crate: `crates/cmux`
+## Binary Crate: `crates/cmx`
 
 Responsibilities:
 
@@ -82,12 +82,12 @@ Responsibilities:
 Initial commands:
 
 ```text
-cmux daemon
-cmux login wechat
-cmux doctor
-cmux config init
-cmux sessions list
-cmux sessions close <session-id>
+cmx daemon
+cmx login wechat
+cmx doctor
+cmx config init
+cmx sessions list
+cmx sessions close <session-id>
 ```
 
 Suggested dependencies:
@@ -236,7 +236,7 @@ state/
 
 `router`
 
-- Parses mobile `cmux ...` commands.
+- Parses mobile `cmx ...` commands.
 - Authorizes inbound events.
 - Resolves the active `ChatMuxXSession`.
 - Starts onboarding, session switching, and confirmation flows.
@@ -303,7 +303,7 @@ state/
 Allowed direction:
 
 ```text
-cmux -> app -> router/session/monitor/delivery
+cmx -> app -> router/session/monitor/delivery
 channel -> common models only
 provider -> tmux model/common models only
 session -> tmux/provider/state
