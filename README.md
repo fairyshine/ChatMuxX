@@ -29,7 +29,7 @@ source ~/.zshrc
 
 ## Try It
 
-You need `tmux`, Codex CLI logged in locally, and a WeChat account that can use the iLink Bot API.
+You need `tmux`, a local CLI app such as Codex or Claude Code logged in locally, and a WeChat account that can use the iLink Bot API.
 
 1. Check your local setup:
 
@@ -53,10 +53,11 @@ cmx daemon
 
 Keep this terminal window running. The daemon receives WeChat messages, controls tmux, and sends replies back.
 
-4. Send this from WeChat:
+4. Send one of these from WeChat:
 
 ```text
 cmx n --id main /Users/you/Code/your-project codex
+cmx n --id claude /Users/you/Code/your-project claude
 ```
 
 Replace the path with your real project directory.
@@ -76,6 +77,7 @@ Check local tools:
 ```bash
 tmux -V
 codex --version
+claude --version
 ```
 
 Normal WeChat text goes to Codex. Text starting with `cmx` controls ChatMuxX.
@@ -137,6 +139,6 @@ ChatMuxX can already run the basic WeChat-to-local-Codex flow, but it is still e
 
 - The daemon runs in the foreground; it is not installed as a system service yet.
 - `cmx ss` returns text, not a real screenshot.
-- Claude provider, recovery, and multi-user policies are still being improved.
+- Recovery and multi-user policies are still being improved.
 
 Developer and design docs live in [docs](docs/).

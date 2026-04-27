@@ -158,7 +158,7 @@ pub struct SessionsNewArgs {
     pub id: Option<String>,
     /// Workspace directory where the provider should start.
     pub workspace: PathBuf,
-    /// Provider to start: shell, codex, or claude. Only shell is wired first.
+    /// Provider to start: shell, codex, or claude.
     #[arg(default_value = "shell")]
     pub provider: String,
     /// Extra provider arguments after `--`.

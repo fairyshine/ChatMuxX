@@ -1,8 +1,10 @@
+pub mod claude;
 pub mod codex;
 pub mod model;
 pub mod registry;
 pub mod shell;
 
+pub use claude::ClaudeProvider;
 pub use codex::CodexProvider;
 pub use model::{
     LaunchMode, OutputSource, OutputSourceKind, ProviderCapabilities, ProviderCursor,

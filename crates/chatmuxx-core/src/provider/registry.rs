@@ -8,7 +8,7 @@ use crate::{
             OutputSource, ProviderCapabilities, ProviderKind, ProviderLaunchCommand,
             ProviderLaunchRequest,
         },
-        CodexProvider, ShellProvider,
+        ClaudeProvider, CodexProvider, ShellProvider,
     },
     ChatMuxXError, Result,
 };
@@ -41,6 +41,7 @@ impl ProviderRegistry {
     pub fn from_configs(configs: &ProviderConfigs) -> Self {
         Self::new([
             Arc::new(CodexProvider::new(configs.codex.clone())) as Arc<dyn ProviderAdapter>,
+            Arc::new(ClaudeProvider::new(configs.claude.clone())) as Arc<dyn ProviderAdapter>,
             Arc::new(ShellProvider::new(configs.shell.clone())) as Arc<dyn ProviderAdapter>,
         ])
     }
@@ -72,12 +73,20 @@ mod tests {
     use crate::config::ProviderConfigs;
 
     #[test]
-    fn registry_contains_shell_provider_from_default_config() {
+    fn registry_contains_builtin_providers_from_default_config() {
         let registry = ProviderRegistry::from_configs(&ProviderConfigs::default());
 
         assert_eq!(
             registry.list(),
-            vec![ProviderKind::Codex, ProviderKind::Shell]
+            vec![
+                ProviderKind::Codex,
+                ProviderKind::Claude,
+                ProviderKind::Shell
+            ]
+        );
+        assert_eq!(
+            registry.get(ProviderKind::Claude).unwrap().kind(),
+            ProviderKind::Claude
         );
         assert_eq!(
             registry.get(ProviderKind::Shell).unwrap().kind(),
@@ -91,9 +100,9 @@ mod tests {
 
     #[test]
     fn registry_rejects_unregistered_provider() {
-        let registry = ProviderRegistry::from_configs(&ProviderConfigs::default());
-        let Err(err) = registry.get(ProviderKind::Claude) else {
-            panic!("claude should not be registered yet");
+        let registry = ProviderRegistry::new([]);
+        let Err(err) = registry.get(ProviderKind::Codex) else {
+            panic!("empty registry should reject codex");
         };
 
         assert!(err.to_string().contains("unknown provider"));

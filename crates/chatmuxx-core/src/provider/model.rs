@@ -34,7 +34,7 @@ impl FromStr for ProviderKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "codex" => Ok(Self::Codex),
-            "claude" => Ok(Self::Claude),
+            "claude" | "claude-code" | "cc" => Ok(Self::Claude),
             "shell" | "sh" => Ok(Self::Shell),
             other => Err(ProviderKindParseError {
                 value: other.to_owned(),
@@ -182,6 +182,11 @@ mod tests {
             "CLAUDE".parse::<ProviderKind>().unwrap(),
             ProviderKind::Claude
         );
+        assert_eq!(
+            "claude-code".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Claude
+        );
+        assert_eq!("cc".parse::<ProviderKind>().unwrap(), ProviderKind::Claude);
         assert_eq!("sh".parse::<ProviderKind>().unwrap(), ProviderKind::Shell);
     }
 

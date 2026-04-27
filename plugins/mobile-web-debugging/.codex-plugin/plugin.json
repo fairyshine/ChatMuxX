@@ -1,0 +1,37 @@
+{
+  "name": "mobile-web-debugging",
+  "version": "0.1.0",
+  "description": "Guide Codex to expose local web apps to phones with VS Code Port Forwarding and devtunnels.ms.",
+  "author": {
+    "name": "ChatMuxX",
+    "email": "",
+    "url": ""
+  },
+  "homepage": "",
+  "repository": "",
+  "license": "MIT",
+  "keywords": [
+    "mobile-debugging",
+    "vscode",
+    "devtunnels",
+    "port-forwarding"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Mobile Web Debugging",
+    "shortDescription": "Open local web apps on phones with VS Code dev tunnels.",
+    "longDescription": "A lightweight optional plugin that helps Codex use VS Code Port Forwarding / devtunnels.ms to expose a local web server as an HTTPS URL for mobile Safari or Chrome testing, with clear authorization and Public/Private visibility safeguards.",
+    "developerName": "ChatMuxX",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Guidance",
+      "Computer Use"
+    ],
+    "defaultPrompt": [
+      "Forward my local web app to my phone.",
+      "Use VS Code dev tunnels for port 3000.",
+      "Help my iPhone open localhost."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

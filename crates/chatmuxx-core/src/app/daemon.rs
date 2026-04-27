@@ -46,6 +46,8 @@ pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
     let paths = StatePaths::from_default_root()?;
     ensure_state_dir(&paths.root).await?;
     let config = load_config_or_default(config_path).await?;
+    let manager = SessionManager::new(config.clone(), paths.clone());
+    manager.configure_managed_tmux_session().await?;
 
     if !config.wechat.enabled {
         println!("WeChat is disabled in config.");
@@ -70,8 +72,6 @@ pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
 
     let mut monitor_interval =
         tokio::time::interval(Duration::from_millis(config.daemon.poll_interval_ms));
-    let manager = SessionManager::new(config.clone(), paths.clone());
-    manager.configure_managed_tmux_session().await?;
 
     loop {
         tokio::select! {
@@ -240,7 +240,7 @@ async fn handle_wechat_text(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "还没有绑定的会话。发送 `cmx new /你的项目路径 codex` 创建 Codex 会话。",
+                    "还没有绑定的会话。发送 `cmx new /你的项目路径 claude` 创建 Claude 会话，或把 `claude` 换成 `codex` / `shell`。",
                 )
                 .await?;
             }
@@ -281,7 +281,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmx new --id main /项目路径 codex`",
+                    "用法：`cmx new --id main /项目路径 claude`，provider 也可以是 `codex` 或 `shell`。",
                 )
                 .await?;
                 return Ok(());
@@ -291,7 +291,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "项目路径解析失败：`--id` 要放在 `cmx new` 后面，示例：`cmx new --id main /项目路径 codex`。",
+                    "项目路径解析失败：`--id` 要放在 `cmx new` 后面，示例：`cmx new --id main /项目路径 claude`。",
                 )
                 .await?;
                 return Ok(());
@@ -442,7 +442,7 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                "切换 provider 请先用 `cmx close` 关闭当前会话，再用 `cmx new /路径 codex` 创建。",
+                "切换 provider 请先用 `cmx close` 关闭当前会话，再用 `cmx new /路径 claude` 或 `cmx new /路径 codex` 创建。",
             )
             .await?;
         }
@@ -816,7 +816,7 @@ fn upsert_conversation(state: &mut AppState, record: ConversationRecord) {
 }
 
 fn help_text() -> &'static str {
-    "ChatMuxX 命令：\ncmx new --id main /项目路径 codex\ncmx sessions\ncmx switch <session-id>\ncmx rename [session-id] <new-id>\ncmx screenshot\ncmx close\ncmx prune\n普通文字会发送给当前 Codex 会话。"
+    "ChatMuxX 命令：\ncmx new --id main /项目路径 claude\ncmx new --id codex /项目路径 codex\ncmx new --id sh /项目路径 shell\ncmx sessions\ncmx switch <session-id>\ncmx rename [session-id] <new-id>\ncmx screenshot\ncmx close\ncmx prune\n普通文字会发送给当前会话。"
 }
 
 fn format_session_list(
@@ -1200,6 +1200,7 @@ fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
             ProviderKind::Codex | ProviderKind::Claude
                 if is_noisy_agent_status_line(line)
                     || is_noisy_agent_ui_line(line)
+                    || (provider == ProviderKind::Claude && is_noisy_claude_ui_line(line))
                     || (index >= footer_start && is_terminal_footer_line(line)) =>
             {
                 None
@@ -1465,20 +1466,53 @@ fn is_noisy_agent_ui_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.starts_with("› ")
         || trimmed == "›"
+        || trimmed.starts_with("❯")
         || trimmed.starts_with("• Working")
         || trimmed.starts_with("• Thinking")
         || trimmed.contains("esc to interrupt")
         || trimmed.contains("ctrl + t to view transcript")
+        || trimmed.contains("? for shortcuts")
         || trimmed.starts_with("⚠ Model metadata")
         || trimmed
             .chars()
             .all(|ch| is_separator_char(ch) || ch.is_whitespace())
 }
 
+fn is_noisy_claude_ui_line(line: &str) -> bool {
+    let cleaned = clean_footer_line(line);
+    let lower = cleaned.to_ascii_lowercase();
+    lower.contains("claude code v")
+        || lower.contains("tips for getting started")
+        || lower.contains("welcome back")
+        || lower.contains("run /init to create")
+        || lower.contains("recent activity")
+        || lower.contains("no recent activity")
+        || lower.contains("api usage billing")
+        || lower.contains("/effort")
+        || (cleaned.starts_with("~/") && !cleaned.chars().any(char::is_whitespace))
+        || cleaned
+            .chars()
+            .any(|ch| matches!(ch, '▐' | '▛' | '█' | '▜' | '▌' | '▝' | '▘' | '▗'))
+}
+
 fn is_separator_char(ch: char) -> bool {
     matches!(
         ch,
-        '─' | '━' | '-' | '—' | '═' | '│' | '┃' | '┆' | '┊' | '║' | '╎' | '╏'
+        '─' | '━'
+            | '-'
+            | '—'
+            | '═'
+            | '│'
+            | '┃'
+            | '┆'
+            | '┊'
+            | '║'
+            | '╎'
+            | '╏'
+            | '╭'
+            | '╮'
+            | '╰'
+            | '╯'
     )
 }
 
@@ -1682,6 +1716,16 @@ mod tests {
     }
 
     #[test]
+    fn claude_pane_normalization_filters_welcome_screen() {
+        let text = normalize_pane_text(
+            "╭─── Claude Code v2.1.119 ─────────────────────────╮\n│            Welcome back!           │ Tips for getting started\n│               ▐▛███▜▌              │ Run /init to create a CLAUDE.md file\n│   Sonnet 4.6 · API Usage Billing   │ Recent activity\n│          ~/Code/ChatMuxX           │ No recent activity\n╰──────────────────────────────────────────────────╯\n❯\n  ? for shortcuts                             ● high · /effort",
+            ProviderKind::Claude,
+        );
+
+        assert_eq!(text, "");
+    }
+
+    #[test]
     fn shell_pane_normalization_filters_prompts_and_command_echo() {
         let text = normalize_pane_text(
             "The default interactive shell is now zsh.\nTo update your account to use zsh, please run `chsh -s /bin/zsh`.\nFor more details, please visit https://support.apple.com/kb/HT208050.\nbash-3.2$ pwd\n/Users/wumengsong/Code/ChatMuxX\nbash-3.2$",
@@ -1797,6 +1841,16 @@ mod tests {
         );
 
         assert_eq!(footer, Some("gpt-5.5 high · ~/Code/ChatMuxX".to_owned()));
+    }
+
+    #[test]
+    fn terminal_footer_keeps_claude_startup_context() {
+        let footer = extract_terminal_footer(
+            "╭─── Claude Code v2.1.119 ─────────╮\n│   Sonnet 4.6 · API Usage Billing   │\n│          ~/Code/ChatMuxX           │\n❯\n  ? for shortcuts              ● high · /effort",
+            ProviderKind::Claude,
+        );
+
+        assert_eq!(footer, Some("Sonnet 4.6 · API Usage Billing".to_owned()));
     }
 
     #[test]
