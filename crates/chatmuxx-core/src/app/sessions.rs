@@ -12,7 +12,12 @@ use crate::{
     ChatMuxXError, Result,
 };
 
-pub async fn new(workspace: PathBuf, provider: String, extra_args: Vec<String>) -> Result<()> {
+pub async fn new(
+    id: Option<String>,
+    workspace: PathBuf,
+    provider: String,
+    extra_args: Vec<String>,
+) -> Result<()> {
     let paths = StatePaths::from_default_root()?;
     ensure_state_dir(&paths.root).await?;
     let config = load_config_or_default().await?;
@@ -21,6 +26,7 @@ pub async fn new(workspace: PathBuf, provider: String, extra_args: Vec<String>) 
         ProviderKind::from_str(&provider).map_err(|_| ChatMuxXError::InvalidProvider(provider))?;
     let record = manager
         .create_session(CreateSessionRequest {
+            id: id.map(SessionId),
             provider,
             workspace,
             launch_mode: LaunchMode::Fresh,
@@ -73,7 +79,32 @@ pub async fn close(session_id: String) -> Result<()> {
         .close_session(&SessionId(session_id.clone()), CloseReason::UserRequested)
         .await?;
 
-    println!("closed session {}", record.id.0);
+    println!("closed and pruned session {}", record.id.0);
+    Ok(())
+}
+
+pub async fn rename(session_id: String, new_id: String) -> Result<()> {
+    let paths = StatePaths::from_default_root()?;
+    let config = load_config_or_default().await?;
+    let manager = SessionManager::new(config, paths);
+    let record = manager
+        .rename_session(&SessionId(session_id), SessionId(new_id))
+        .await?;
+
+    println!("renamed session to {}", record.id.0);
+    Ok(())
+}
+
+pub async fn prune() -> Result<()> {
+    let paths = StatePaths::from_default_root()?;
+    let config = load_config_or_default().await?;
+    let manager = SessionManager::new(config, paths);
+    let result = manager.prune_inactive_sessions().await?;
+
+    println!(
+        "pruned {} sessions and {} bindings",
+        result.removed_sessions, result.removed_bindings
+    );
     Ok(())
 }
 

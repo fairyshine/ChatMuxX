@@ -15,7 +15,7 @@ use crate::{
     config::{default_config_path, load_config, Config},
     mobile::{parse_mobile_text, MobileCommand, ParsedInbound},
     provider::{LaunchMode, ProviderKind},
-    session::{CloseReason, CreateSessionRequest, SessionManager},
+    session::{CloseReason, CreateSessionRequest, SessionManager, SessionSummary},
     state::{
         accounts::{AccountState, WeChatAccountRecord},
         atomic::{load_json_or_default, save_json},
@@ -280,7 +280,7 @@ async fn handle_bridge_command(
                     paths,
                     &event.account_id,
                     &event.conversation_id,
-                    "用法：`cmux new /项目路径 codex`",
+                    "用法：`cmux new --id main /项目路径 codex`",
                 )
                 .await?;
                 return Ok(());
@@ -288,6 +288,7 @@ async fn handle_bridge_command(
             let provider = args.provider.unwrap_or(ProviderKind::Codex);
             let session = manager
                 .create_session(CreateSessionRequest {
+                    id: args.id,
                     provider,
                     workspace,
                     launch_mode: LaunchMode::Fresh,
@@ -306,23 +307,7 @@ async fn handle_bridge_command(
         }
         MobileCommand::Sessions => {
             let sessions = manager.list_sessions().await?;
-            let text = if sessions.is_empty() {
-                "没有会话。".to_owned()
-            } else {
-                sessions
-                    .into_iter()
-                    .map(|session| {
-                        format!(
-                            "{}\t{}\t{:?}\t{}",
-                            session.id.0,
-                            session.provider,
-                            session.status,
-                            session.workspace.display()
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
+            let text = format_session_list(&sessions);
             send_wechat_reply(paths, &event.account_id, &event.conversation_id, &text).await?;
         }
         MobileCommand::Switch { session_id } => {
@@ -336,6 +321,7 @@ async fn handle_bridge_command(
                 .await?;
                 return Ok(());
             };
+            let session_id = manager.resolve_session_id(&session_id).await?;
             bind_conversation(paths, &event.conversation_id, &session_id).await?;
             send_wechat_reply(
                 paths,
@@ -365,7 +351,52 @@ async fn handle_bridge_command(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                &format!("已关闭：{}", session_id.0),
+                &format!("已关闭并清理：{}", session_id.0),
+            )
+            .await?;
+        }
+        MobileCommand::Rename { session_id, new_id } => {
+            let Some(new_id) = new_id else {
+                send_wechat_reply(
+                    paths,
+                    &event.account_id,
+                    &event.conversation_id,
+                    "用法：`cmux rename [session-id] <new-id>`",
+                )
+                .await?;
+                return Ok(());
+            };
+            let Some(session_id) =
+                session_id.or(active_session_id(paths, &event.conversation_id).await?)
+            else {
+                send_wechat_reply(
+                    paths,
+                    &event.account_id,
+                    &event.conversation_id,
+                    "没有可重命名的活动会话。",
+                )
+                .await?;
+                return Ok(());
+            };
+            let record = manager.rename_session(&session_id, new_id).await?;
+            send_wechat_reply(
+                paths,
+                &event.account_id,
+                &event.conversation_id,
+                &format!("已重命名会话：{}", record.id.0),
+            )
+            .await?;
+        }
+        MobileCommand::Prune => {
+            let result = manager.prune_inactive_sessions().await?;
+            send_wechat_reply(
+                paths,
+                &event.account_id,
+                &event.conversation_id,
+                &format!(
+                    "已清理 {} 个 Dead/Closed 会话，{} 条绑定记录。",
+                    result.removed_sessions, result.removed_bindings
+                ),
             )
             .await?;
         }
@@ -544,8 +575,13 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
             .find(|conversation| conversation.id == binding.conversation_id)
         {
             if let Some(message) = delivery {
-                send_wechat_reply(paths, &conversation.account_id, &conversation.id, &message)
-                    .await?;
+                send_wechat_deduped_reply(
+                    paths,
+                    &conversation.account_id,
+                    &conversation.id,
+                    &message,
+                )
+                .await?;
             }
         }
 
@@ -586,6 +622,25 @@ async fn send_wechat_reply(
     conversation_id: &str,
     text: &str,
 ) -> Result<()> {
+    send_wechat_reply_inner(paths, account_id, conversation_id, text, false).await
+}
+
+async fn send_wechat_deduped_reply(
+    paths: &StatePaths,
+    account_id: &str,
+    conversation_id: &str,
+    text: &str,
+) -> Result<()> {
+    send_wechat_reply_inner(paths, account_id, conversation_id, text, true).await
+}
+
+async fn send_wechat_reply_inner(
+    paths: &StatePaths,
+    account_id: &str,
+    conversation_id: &str,
+    text: &str,
+    dedupe: bool,
+) -> Result<()> {
     let accounts: AccountState = load_json_or_default(&paths.accounts).await?;
     let state: AppState = load_json_or_default(&paths.state).await?;
     let account = accounts
@@ -611,11 +666,16 @@ async fn send_wechat_reply(
 
     let client = WeChatClient::new(&account.base_url);
     let mut recent = recent_outbound_texts(&paths.history, conversation_id, 20).await?;
-    let Some(text) = suppress_recent_outbound_text(text, &recent) else {
-        return Ok(());
+    let text = if dedupe {
+        let Some(text) = suppress_recent_outbound_text(text, &recent) else {
+            return Ok(());
+        };
+        text
+    } else {
+        text.trim_matches('\n').trim_end().to_owned()
     };
     for part in split_for_chat(&text) {
-        if is_redundant_outbound(&part, &recent) {
+        if dedupe && is_redundant_outbound(&part, &recent) {
             continue;
         }
         client
@@ -723,7 +783,25 @@ fn upsert_conversation(state: &mut AppState, record: ConversationRecord) {
 }
 
 fn help_text() -> &'static str {
-    "ChatMuxX 命令：\ncmx new /项目路径 codex\ncmx sessions\ncmx switch <session-id>\ncmx screenshot\ncmx close\n普通文字会发送给当前 Codex 会话。"
+    "ChatMuxX 命令：\ncmux new --id main /项目路径 codex\ncmux sessions\ncmux switch <session-id>\ncmux rename [session-id] <new-id>\ncmux screenshot\ncmux close\ncmux prune\n普通文字会发送给当前 Codex 会话。"
+}
+
+fn format_session_list(sessions: &[SessionSummary]) -> String {
+    if sessions.is_empty() {
+        return "会话列表：没有会话。".to_owned();
+    }
+
+    let mut lines = vec![format!("会话列表：{} 个", sessions.len())];
+    for session in sessions {
+        lines.push(format!(
+            "- {} · {} · {:?}\n  {}",
+            session.id.0,
+            session.provider,
+            session.status,
+            session.workspace.display()
+        ));
+    }
+    lines.join("\n")
 }
 
 fn split_for_chat(text: &str) -> Vec<String> {
@@ -1295,6 +1373,22 @@ mod tests {
 
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0].chars().count(), 1800);
+    }
+
+    #[test]
+    fn session_list_is_formatted_for_chat() {
+        let text = format_session_list(&[SessionSummary {
+            id: SessionId("sess-1".to_owned()),
+            provider: ProviderKind::Codex,
+            workspace: PathBuf::from("/tmp/project"),
+            status: SessionStatus::Running,
+            display_name: "codex:/tmp/project".to_owned(),
+        }]);
+
+        assert_eq!(
+            text,
+            "会话列表：1 个\n- sess-1 · codex · Running\n  /tmp/project"
+        );
     }
 
     #[test]

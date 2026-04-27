@@ -62,6 +62,15 @@ pub enum ChatMuxXError {
     #[error("session not found: {0}")]
     SessionNotFound(String),
 
+    #[error("ambiguous session id prefix `{prefix}` matches: {matches}")]
+    AmbiguousSessionId { prefix: String, matches: String },
+
+    #[error("invalid session id `{0}`; use 1-32 letters, numbers, '.', '_' or '-'")]
+    InvalidSessionId(String),
+
+    #[error("session id already exists: {0}")]
+    SessionIdAlreadyExists(String),
+
     #[error("session has no tmux attachment: {0}")]
     SessionNotAttached(String),
 

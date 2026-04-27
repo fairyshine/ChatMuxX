@@ -75,6 +75,10 @@ pub enum SessionsCommand {
     List,
     /// Close a managed session/window.
     Close { session_id: String },
+    /// Rename a session id.
+    Rename { session_id: String, new_id: String },
+    /// Delete Dead and Closed session records from local state.
+    Prune,
     /// Send literal text to a session pane.
     Send(SessionsSendArgs),
     /// Capture the current text from a session pane.
@@ -83,6 +87,9 @@ pub enum SessionsCommand {
 
 #[derive(Debug, Args)]
 pub struct SessionsNewArgs {
+    /// Optional human-friendly session id, for example `main`.
+    #[arg(long)]
+    pub id: Option<String>,
     /// Workspace directory where the provider should start.
     pub workspace: PathBuf,
     /// Provider to start: shell, codex, or claude. Only shell is wired first.

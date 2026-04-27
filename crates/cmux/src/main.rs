@@ -19,13 +19,22 @@ async fn main() -> anyhow::Result<()> {
         },
         Command::Sessions(args) => match args.command {
             SessionsCommand::New(new) => {
-                chatmuxx_core::app::sessions::new(new.workspace, new.provider, new.extra_args)
-                    .await?
+                chatmuxx_core::app::sessions::new(
+                    new.id,
+                    new.workspace,
+                    new.provider,
+                    new.extra_args,
+                )
+                .await?
             }
             SessionsCommand::List => chatmuxx_core::app::sessions::list().await?,
             SessionsCommand::Close { session_id } => {
                 chatmuxx_core::app::sessions::close(session_id).await?
             }
+            SessionsCommand::Rename { session_id, new_id } => {
+                chatmuxx_core::app::sessions::rename(session_id, new_id).await?
+            }
+            SessionsCommand::Prune => chatmuxx_core::app::sessions::prune().await?,
             SessionsCommand::Send(send) => {
                 chatmuxx_core::app::sessions::send(send.session_id, send.text, send.enter).await?
             }

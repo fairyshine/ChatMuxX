@@ -7,6 +7,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateSessionRequest {
+    pub id: Option<SessionId>,
     pub provider: ProviderKind,
     pub workspace: PathBuf,
     pub launch_mode: LaunchMode,
@@ -30,4 +31,10 @@ pub struct SessionSummary {
     pub workspace: PathBuf,
     pub status: SessionStatus,
     pub display_name: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PruneSessionsResult {
+    pub removed_sessions: usize,
+    pub removed_bindings: usize,
 }

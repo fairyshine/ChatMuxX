@@ -27,11 +27,11 @@ pub struct SessionId(pub String);
 
 impl SessionId {
     pub fn new() -> Self {
-        let nanos = std::time::SystemTime::now()
+        let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos();
-        Self(format!("sess-{nanos}"))
+            .as_millis();
+        Self(format!("s-{}", base36(millis)))
     }
 }
 
@@ -39,6 +39,20 @@ impl Default for SessionId {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn base36(mut value: u128) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    if value == 0 {
+        return "0".to_owned();
+    }
+
+    let mut chars = Vec::new();
+    while value > 0 {
+        chars.push(DIGITS[(value % 36) as usize] as char);
+        value /= 36;
+    }
+    chars.iter().rev().collect()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

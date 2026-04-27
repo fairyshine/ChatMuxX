@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -6,10 +7,11 @@ use std::{
 use crate::{
     config::Config,
     provider::{ProviderLaunchRequest, ProviderRegistry},
-    session::model::{CloseReason, CreateSessionRequest, SessionSummary},
+    session::model::{CloseReason, CreateSessionRequest, PruneSessionsResult, SessionSummary},
     state::{
         atomic::{load_json_or_default, save_json},
         files::StatePaths,
+        monitor::MonitorState,
         sessions::{
             AppState, BindingRecord, SessionId, SessionRecord, SessionStatus, TmuxAttachment,
         },
@@ -52,7 +54,18 @@ impl SessionManager {
             .ensure_managed_session(&self.config.daemon.tmux_session)
             .await?;
 
-        let id = SessionId::new();
+        let mut state = self.load_state().await?;
+        state.schema_version = 1;
+        let id = match req.id {
+            Some(id) => {
+                validate_session_id(&id)?;
+                if state.sessions.iter().any(|session| session.id == id) {
+                    return Err(ChatMuxXError::SessionIdAlreadyExists(id.0));
+                }
+                id
+            }
+            None => unique_session_id(&state),
+        };
         let tmux_window = self
             .tmux
             .create_window(CreateTmuxWindow {
@@ -82,8 +95,6 @@ impl SessionManager {
             updated_at: now,
         };
 
-        let mut state = self.load_state().await?;
-        state.schema_version = 1;
         state.sessions.push(record.clone());
         if let Some(conversation_id) = req.conversation {
             for binding in state
@@ -105,8 +116,69 @@ impl SessionManager {
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
+        self.prune_inactive_sessions().await?;
         let state = self.load_state().await?;
         Ok(state.sessions.iter().map(summary_from_record).collect())
+    }
+
+    pub async fn resolve_session_id(&self, session_id: &SessionId) -> Result<SessionId> {
+        let state = self.load_state().await?;
+        resolve_session_id_in_state(&state, session_id)
+    }
+
+    pub async fn rename_session(
+        &self,
+        session_id: &SessionId,
+        new_id: SessionId,
+    ) -> Result<SessionRecord> {
+        validate_session_id(&new_id)?;
+        let mut state = self.load_state().await?;
+        let session_id = resolve_session_id_in_state(&state, session_id)?;
+        if state.sessions.iter().any(|session| session.id == new_id) {
+            return Err(ChatMuxXError::SessionIdAlreadyExists(new_id.0));
+        }
+
+        let Some(record) = state
+            .sessions
+            .iter_mut()
+            .find(|session| session.id == session_id)
+        else {
+            return Err(ChatMuxXError::SessionNotFound(session_id.0));
+        };
+        record.id = new_id.clone();
+        record.updated_at = now_string();
+        let updated = record.clone();
+
+        for binding in state
+            .bindings
+            .iter_mut()
+            .filter(|binding| binding.session_id == session_id)
+        {
+            binding.session_id = new_id.clone();
+        }
+        self.save_state(&state).await?;
+        self.rename_monitor_record(&session_id, &new_id).await?;
+        Ok(updated)
+    }
+
+    pub async fn prune_inactive_sessions(&self) -> Result<PruneSessionsResult> {
+        let mut state = self.load_state().await?;
+        let removed_ids = state
+            .sessions
+            .iter()
+            .filter(|session| matches!(session.status, SessionStatus::Dead | SessionStatus::Closed))
+            .map(|session| session.id.clone())
+            .collect::<HashSet<_>>();
+
+        if removed_ids.is_empty() {
+            return Ok(PruneSessionsResult::default());
+        }
+
+        let result = remove_session_records(&mut state, &removed_ids);
+        self.save_state(&state).await?;
+        self.remove_monitor_records(&removed_ids).await?;
+
+        Ok(result)
     }
 
     pub async fn close_session(
@@ -115,10 +187,12 @@ impl SessionManager {
         _reason: CloseReason,
     ) -> Result<SessionRecord> {
         let mut state = self.load_state().await?;
+        let session_id = resolve_session_id_in_state(&state, session_id)?;
         let Some(record) = state
             .sessions
-            .iter_mut()
-            .find(|item| &item.id == session_id)
+            .iter()
+            .find(|item| item.id == session_id)
+            .cloned()
         else {
             return Err(ChatMuxXError::SessionNotFound(session_id.0.clone()));
         };
@@ -133,40 +207,24 @@ impl SessionManager {
             }
         }
 
-        record.status = SessionStatus::Closed;
-        record.updated_at = now_string();
-        let updated = record.clone();
-        for binding in state
-            .bindings
-            .iter_mut()
-            .filter(|binding| binding.session_id == *session_id)
-        {
-            binding.active = false;
-        }
+        let removed_ids = HashSet::from([session_id]);
+        remove_session_records(&mut state, &removed_ids);
         self.save_state(&state).await?;
-        Ok(updated)
+        self.remove_monitor_records(&removed_ids).await?;
+        Ok(record)
     }
 
     pub async fn mark_session_dead(&self, session_id: &SessionId) -> Result<()> {
         let mut state = self.load_state().await?;
-        let Some(record) = state
-            .sessions
-            .iter_mut()
-            .find(|item| &item.id == session_id)
-        else {
+        let session_id = resolve_session_id_in_state(&state, session_id)?;
+        if !state.sessions.iter().any(|item| item.id == session_id) {
             return Err(ChatMuxXError::SessionNotFound(session_id.0.clone()));
-        };
-
-        record.status = SessionStatus::Dead;
-        record.updated_at = now_string();
-        for binding in state
-            .bindings
-            .iter_mut()
-            .filter(|binding| binding.session_id == *session_id)
-        {
-            binding.active = false;
         }
-        self.save_state(&state).await
+
+        let removed_ids = HashSet::from([session_id]);
+        remove_session_records(&mut state, &removed_ids);
+        self.save_state(&state).await?;
+        self.remove_monitor_records(&removed_ids).await
     }
 
     pub async fn send_text(&self, session_id: &SessionId, text: &str) -> Result<()> {
@@ -197,10 +255,11 @@ impl SessionManager {
 
     async fn session_record(&self, session_id: &SessionId) -> Result<SessionRecord> {
         let state = self.load_state().await?;
+        let session_id = resolve_session_id_in_state(&state, session_id)?;
         state
             .sessions
             .into_iter()
-            .find(|item| &item.id == session_id)
+            .find(|item| item.id == session_id)
             .ok_or_else(|| ChatMuxXError::SessionNotFound(session_id.0.clone()))
     }
 
@@ -211,6 +270,42 @@ impl SessionManager {
     async fn save_state(&self, state: &AppState) -> Result<()> {
         save_json(&self.paths.state, state).await
     }
+
+    async fn remove_monitor_records(&self, session_ids: &HashSet<SessionId>) -> Result<()> {
+        let mut monitor: MonitorState = load_json_or_default(&self.paths.monitor_state).await?;
+        for session_id in session_ids {
+            monitor.sessions.remove(session_id);
+        }
+        save_json(&self.paths.monitor_state, &monitor).await
+    }
+
+    async fn rename_monitor_record(&self, old_id: &SessionId, new_id: &SessionId) -> Result<()> {
+        let mut monitor: MonitorState = load_json_or_default(&self.paths.monitor_state).await?;
+        if let Some(state) = monitor.sessions.remove(old_id) {
+            monitor.sessions.insert(new_id.clone(), state);
+        }
+        save_json(&self.paths.monitor_state, &monitor).await
+    }
+}
+
+fn remove_session_records(
+    state: &mut AppState,
+    session_ids: &HashSet<SessionId>,
+) -> PruneSessionsResult {
+    let before_sessions = state.sessions.len();
+    state
+        .sessions
+        .retain(|session| !session_ids.contains(&session.id));
+
+    let before_bindings = state.bindings.len();
+    state
+        .bindings
+        .retain(|binding| !session_ids.contains(&binding.session_id));
+
+    PruneSessionsResult {
+        removed_sessions: before_sessions - state.sessions.len(),
+        removed_bindings: before_bindings - state.bindings.len(),
+    }
 }
 
 fn validate_workspace(path: &Path) -> Result<()> {
@@ -218,6 +313,56 @@ fn validate_workspace(path: &Path) -> Result<()> {
         Ok(())
     } else {
         Err(ChatMuxXError::InvalidWorkspace(path.to_path_buf()))
+    }
+}
+
+fn validate_session_id(id: &SessionId) -> Result<()> {
+    let text = id.0.as_str();
+    let valid_len = (1..=32).contains(&text.chars().count());
+    let valid_chars = text
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'));
+    if valid_len && valid_chars {
+        Ok(())
+    } else {
+        Err(ChatMuxXError::InvalidSessionId(id.0.clone()))
+    }
+}
+
+fn unique_session_id(state: &AppState) -> SessionId {
+    for index in 0..1000 {
+        let candidate = if index == 0 {
+            SessionId::new()
+        } else {
+            SessionId(format!("{}-{index}", SessionId::new().0))
+        };
+        if state.sessions.iter().all(|session| session.id != candidate) {
+            return candidate;
+        }
+    }
+
+    SessionId::new()
+}
+
+fn resolve_session_id_in_state(state: &AppState, input: &SessionId) -> Result<SessionId> {
+    if state.sessions.iter().any(|session| session.id == *input) {
+        return Ok(input.clone());
+    }
+
+    let matches = state
+        .sessions
+        .iter()
+        .filter(|session| session.id.0.starts_with(&input.0))
+        .map(|session| session.id.0.clone())
+        .collect::<Vec<_>>();
+
+    match matches.as_slice() {
+        [] => Err(ChatMuxXError::SessionNotFound(input.0.clone())),
+        [id] => Ok(SessionId(id.clone())),
+        _ => Err(ChatMuxXError::AmbiguousSessionId {
+            prefix: input.0.clone(),
+            matches: matches.join(", "),
+        }),
     }
 }
 
@@ -268,13 +413,32 @@ mod tests {
 
     use super::*;
     use crate::provider::ProviderKind;
-    use crate::state::sessions::OwnerId;
+    use crate::state::sessions::{BindingRecord, OwnerId};
 
     #[test]
     fn window_name_is_stable_and_tmux_friendly() {
         let name = window_name(&SessionId("sess-123456789".to_owned()), "shell:/tmp/a b");
 
         assert_eq!(name, "cmux-shell--tmp-a-b-123456789");
+    }
+
+    #[test]
+    fn generated_session_id_is_short() {
+        let id = SessionId::new();
+
+        assert!(id.0.starts_with("s-"));
+        assert!(id.0.len() <= 12);
+    }
+
+    #[test]
+    fn custom_session_id_validation_accepts_friendly_names() {
+        assert!(validate_session_id(&SessionId("main".to_owned())).is_ok());
+        assert!(validate_session_id(&SessionId("work-1".to_owned())).is_ok());
+    }
+
+    #[test]
+    fn custom_session_id_validation_rejects_spaces() {
+        assert!(validate_session_id(&SessionId("my session".to_owned())).is_err());
     }
 
     #[test]
@@ -294,5 +458,124 @@ mod tests {
 
         assert_eq!(summary.id, record.id);
         assert_eq!(summary.display_name, "shell:/tmp/project");
+    }
+
+    #[test]
+    fn remove_session_records_removes_sessions_and_bindings() {
+        let remove_id = SessionId("sess-dead".to_owned());
+        let keep_id = SessionId("sess-running".to_owned());
+        let mut state = AppState {
+            schema_version: 1,
+            owner: None,
+            sessions: vec![
+                SessionRecord {
+                    id: remove_id.clone(),
+                    provider: ProviderKind::Codex,
+                    workspace: PathBuf::from("/tmp/dead"),
+                    status: SessionStatus::Dead,
+                    tmux: None,
+                    owner: OwnerId("owner".to_owned()),
+                    created_at: "1".to_owned(),
+                    updated_at: "1".to_owned(),
+                },
+                SessionRecord {
+                    id: keep_id.clone(),
+                    provider: ProviderKind::Codex,
+                    workspace: PathBuf::from("/tmp/running"),
+                    status: SessionStatus::Running,
+                    tmux: None,
+                    owner: OwnerId("owner".to_owned()),
+                    created_at: "1".to_owned(),
+                    updated_at: "1".to_owned(),
+                },
+            ],
+            bindings: vec![
+                BindingRecord {
+                    conversation_id: "conv-1".to_owned(),
+                    session_id: remove_id.clone(),
+                    active: false,
+                },
+                BindingRecord {
+                    conversation_id: "conv-2".to_owned(),
+                    session_id: keep_id.clone(),
+                    active: true,
+                },
+            ],
+            conversations: Vec::new(),
+        };
+
+        let result = remove_session_records(&mut state, &HashSet::from([remove_id]));
+
+        assert_eq!(
+            result,
+            PruneSessionsResult {
+                removed_sessions: 1,
+                removed_bindings: 1
+            }
+        );
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].id, keep_id);
+        assert_eq!(state.bindings.len(), 1);
+    }
+
+    #[test]
+    fn session_id_resolution_accepts_unique_prefix() {
+        let state = AppState {
+            schema_version: 1,
+            owner: None,
+            sessions: vec![SessionRecord {
+                id: SessionId("main-session".to_owned()),
+                provider: ProviderKind::Codex,
+                workspace: PathBuf::from("/tmp/project"),
+                status: SessionStatus::Running,
+                tmux: None,
+                owner: OwnerId("owner".to_owned()),
+                created_at: "1".to_owned(),
+                updated_at: "1".to_owned(),
+            }],
+            bindings: Vec::new(),
+            conversations: Vec::new(),
+        };
+
+        let id = resolve_session_id_in_state(&state, &SessionId("main".to_owned())).unwrap();
+
+        assert_eq!(id, SessionId("main-session".to_owned()));
+    }
+
+    #[test]
+    fn session_id_resolution_rejects_ambiguous_prefix() {
+        let state = AppState {
+            schema_version: 1,
+            owner: None,
+            sessions: vec![
+                SessionRecord {
+                    id: SessionId("main-a".to_owned()),
+                    provider: ProviderKind::Codex,
+                    workspace: PathBuf::from("/tmp/a"),
+                    status: SessionStatus::Running,
+                    tmux: None,
+                    owner: OwnerId("owner".to_owned()),
+                    created_at: "1".to_owned(),
+                    updated_at: "1".to_owned(),
+                },
+                SessionRecord {
+                    id: SessionId("main-b".to_owned()),
+                    provider: ProviderKind::Codex,
+                    workspace: PathBuf::from("/tmp/b"),
+                    status: SessionStatus::Running,
+                    tmux: None,
+                    owner: OwnerId("owner".to_owned()),
+                    created_at: "1".to_owned(),
+                    updated_at: "1".to_owned(),
+                },
+            ],
+            bindings: Vec::new(),
+            conversations: Vec::new(),
+        };
+
+        assert!(matches!(
+            resolve_session_id_in_state(&state, &SessionId("main".to_owned())),
+            Err(ChatMuxXError::AmbiguousSessionId { .. })
+        ));
     }
 }

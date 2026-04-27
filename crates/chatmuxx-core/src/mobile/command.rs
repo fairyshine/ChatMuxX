@@ -8,19 +8,36 @@ pub enum MobileCommand {
     Help,
     New(NewSessionArgs),
     Sessions,
-    Switch { session_id: Option<SessionId> },
-    Close { session_id: Option<SessionId> },
-    Provider { provider: Option<ProviderKind> },
+    Switch {
+        session_id: Option<SessionId>,
+    },
+    Close {
+        session_id: Option<SessionId>,
+    },
+    Rename {
+        session_id: Option<SessionId>,
+        new_id: Option<SessionId>,
+    },
+    Prune,
+    Provider {
+        provider: Option<ProviderKind>,
+    },
     Screenshot,
     Esc,
     Interrupt,
     Enter,
-    Recover { session_id: Option<SessionId> },
-    Unknown { name: String, args: Vec<String> },
+    Recover {
+        session_id: Option<SessionId>,
+    },
+    Unknown {
+        name: String,
+        args: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NewSessionArgs {
+    pub id: Option<SessionId>,
     pub workspace: Option<PathBuf>,
     pub provider: Option<ProviderKind>,
     pub extra_args: Vec<String>,
@@ -78,6 +95,8 @@ fn parse_bridge_command(text: &str) -> MobileCommand {
         "close" | "rm" => MobileCommand::Close {
             session_id: first_session_id(rest),
         },
+        "rename" | "mv" => parse_rename_args(rest),
+        "prune" | "cleanup" => MobileCommand::Prune,
         "provider" | "use" => MobileCommand::Provider {
             provider: rest
                 .first()
@@ -98,10 +117,12 @@ fn parse_bridge_command(text: &str) -> MobileCommand {
 }
 
 fn parse_new_args(args: Vec<String>) -> NewSessionArgs {
+    let mut id = None;
     let mut workspace = None;
     let mut provider = None;
     let mut extra_args = Vec::new();
     let mut after_delimiter = false;
+    let mut id_pending = false;
 
     for arg in args {
         if after_delimiter {
@@ -109,7 +130,14 @@ fn parse_new_args(args: Vec<String>) -> NewSessionArgs {
             continue;
         }
 
-        if arg == "--" {
+        if id_pending {
+            id = Some(SessionId(arg));
+            id_pending = false;
+        } else if arg == "--id" {
+            id_pending = true;
+        } else if let Some(value) = arg.strip_prefix("--id=") {
+            id = Some(SessionId(value.to_owned()));
+        } else if arg == "--" {
             after_delimiter = true;
         } else if provider.is_none() {
             if let Ok(kind) = ProviderKind::from_str(&arg) {
@@ -127,6 +155,7 @@ fn parse_new_args(args: Vec<String>) -> NewSessionArgs {
     }
 
     NewSessionArgs {
+        id,
         workspace,
         provider,
         extra_args,
@@ -135,6 +164,23 @@ fn parse_new_args(args: Vec<String>) -> NewSessionArgs {
 
 fn first_session_id(args: Vec<String>) -> Option<SessionId> {
     args.into_iter().next().map(SessionId)
+}
+
+fn parse_rename_args(args: Vec<String>) -> MobileCommand {
+    match args.as_slice() {
+        [] => MobileCommand::Rename {
+            session_id: None,
+            new_id: None,
+        },
+        [new_id] => MobileCommand::Rename {
+            session_id: None,
+            new_id: Some(SessionId(new_id.clone())),
+        },
+        [session_id, new_id, ..] => MobileCommand::Rename {
+            session_id: Some(SessionId(session_id.clone())),
+            new_id: Some(SessionId(new_id.clone())),
+        },
+    }
 }
 
 fn split_words(text: &str) -> Vec<String> {
@@ -211,9 +257,23 @@ mod tests {
         assert_eq!(
             parse_mobile_text("cmux new '/tmp/my project' claude -- --model opus", false),
             ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: None,
                 workspace: Some(PathBuf::from("/tmp/my project")),
                 provider: Some(ProviderKind::Claude),
                 extra_args: vec!["--model".to_owned(), "opus".to_owned()],
+            }))
+        );
+    }
+
+    #[test]
+    fn new_command_parses_custom_session_id() {
+        assert_eq!(
+            parse_mobile_text("cmux new --id main /tmp/project codex", false),
+            ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: Some(SessionId("main".to_owned())),
+                workspace: Some(PathBuf::from("/tmp/project")),
+                provider: Some(ProviderKind::Codex),
+                extra_args: Vec::new(),
             }))
         );
     }
@@ -224,6 +284,44 @@ mod tests {
             parse_mobile_text("cmux provider codex", false),
             ParsedInbound::BridgeCommand(MobileCommand::Provider {
                 provider: Some(ProviderKind::Codex)
+            })
+        );
+    }
+
+    #[test]
+    fn sessions_list_command_is_a_sessions_command() {
+        assert_eq!(
+            parse_mobile_text("cmux sessions list", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Sessions)
+        );
+    }
+
+    #[test]
+    fn prune_command_is_parsed() {
+        assert_eq!(
+            parse_mobile_text("cmux prune", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Prune)
+        );
+    }
+
+    #[test]
+    fn rename_command_with_one_arg_renames_active_session() {
+        assert_eq!(
+            parse_mobile_text("cmux rename main", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Rename {
+                session_id: None,
+                new_id: Some(SessionId("main".to_owned())),
+            })
+        );
+    }
+
+    #[test]
+    fn rename_command_with_two_args_renames_given_session() {
+        assert_eq!(
+            parse_mobile_text("cmux rename old main", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Rename {
+                session_id: Some(SessionId("old".to_owned())),
+                new_id: Some(SessionId("main".to_owned())),
             })
         );
     }

@@ -190,10 +190,10 @@ target/debug/cmux daemon
 在真实项目目录中创建一个 Codex 会话：
 
 ```text
-cmux new /Users/wumengsong/Code/ChatMuxX codex
+cmux new --id main /Users/wumengsong/Code/ChatMuxX codex
 ```
 
-会话创建后，继续在同一个微信会话里发送普通消息。这些消息会被转发给 Codex。
+会话创建后，继续在同一个微信会话里发送普通消息。这些消息会被转发给 Codex。如果省略 `--id`，ChatMuxX 会创建类似 `s-mogm4ctu` 的短 id。
 
 常用命令：
 
@@ -201,6 +201,7 @@ cmux new /Users/wumengsong/Code/ChatMuxX codex
 cmux help
 cmux sessions
 cmux switch <session-id>
+cmux rename [session-id] <new-id>
 cmux screenshot
 cmux interrupt
 cmux enter
@@ -215,10 +216,11 @@ Provider 原生的 slash commands 会被转发到当前 CLI，因此 `/...` 不�
 你可以不经过微信，直接测试 tmux/provider 路径：
 
 ```bash
-target/debug/cmux sessions new /tmp codex
+target/debug/cmux sessions new --id main /tmp codex
 target/debug/cmux sessions list
 target/debug/cmux sessions send <session-id> "hello" --enter
 target/debug/cmux sessions capture <session-id>
+target/debug/cmux sessions rename <session-id> <new-id>
 target/debug/cmux sessions close <session-id>
 ```
 
@@ -235,8 +237,9 @@ cmux daemon [--config <path>]
 cmux login wechat
 cmux doctor
 cmux config init [--path <path>]
-cmux sessions new <workspace> [provider] [-- <extra-provider-args>...]
+cmux sessions new [--id <id>] <workspace> [provider] [-- <extra-provider-args>...]
 cmux sessions list
+cmux sessions rename <session-id> <new-id>
 cmux sessions send <session-id> <text> [--enter]
 cmux sessions capture <session-id>
 cmux sessions close <session-id>

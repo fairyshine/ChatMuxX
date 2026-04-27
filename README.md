@@ -190,10 +190,10 @@ Send ChatMuxX commands with the `cmux` prefix.
 Create a Codex session in a real project directory:
 
 ```text
-cmux new /Users/wumengsong/Code/ChatMuxX codex
+cmux new --id main /Users/wumengsong/Code/ChatMuxX codex
 ```
 
-After the session is created, send normal messages to the same WeChat conversation. They will be forwarded to Codex.
+After the session is created, send normal messages to the same WeChat conversation. They will be forwarded to Codex. If `--id` is omitted, ChatMuxX creates a short id such as `s-mogm4ctu`.
 
 Useful commands:
 
@@ -201,6 +201,7 @@ Useful commands:
 cmux help
 cmux sessions
 cmux switch <session-id>
+cmux rename [session-id] <new-id>
 cmux screenshot
 cmux interrupt
 cmux enter
@@ -215,10 +216,11 @@ Provider-native slash commands are forwarded to the active CLI, so `/...` is not
 You can test the tmux/provider path without WeChat:
 
 ```bash
-target/debug/cmux sessions new /tmp codex
+target/debug/cmux sessions new --id main /tmp codex
 target/debug/cmux sessions list
 target/debug/cmux sessions send <session-id> "hello" --enter
 target/debug/cmux sessions capture <session-id>
+target/debug/cmux sessions rename <session-id> <new-id>
 target/debug/cmux sessions close <session-id>
 ```
 
@@ -235,8 +237,9 @@ cmux daemon [--config <path>]
 cmux login wechat
 cmux doctor
 cmux config init [--path <path>]
-cmux sessions new <workspace> [provider] [-- <extra-provider-args>...]
+cmux sessions new [--id <id>] <workspace> [provider] [-- <extra-provider-args>...]
 cmux sessions list
+cmux sessions rename <session-id> <new-id>
 cmux sessions send <session-id> <text> [--enter]
 cmux sessions capture <session-id>
 cmux sessions close <session-id>
