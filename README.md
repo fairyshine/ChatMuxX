@@ -8,72 +8,28 @@ The common flow is simple: run `cmx daemon` on your computer, send a message fro
 
 ChatMuxX does not install or modify Codex/Claude hooks, plugins, skills, or config files.
 
-## Try It
-
-Send this from WeChat:
-
-```text
-cmx n --id main /Users/you/Code/your-project codex
-```
-
-Then send a normal message:
-
-```text
-Explain how this repo starts
-```
-
-Codex runs on your computer. The answer comes back to WeChat.
-
 ## Install
-
-Recommended one-line install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh | sh
 ```
 
-The installer downloads the matching binary from GitHub Releases. Pre-releases are supported by default. After that, you get the `cmx` command.
-
-To install a specific pre-release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
-CHATMUXX_VERSION=v0.0.1-dev1 sh /tmp/chatmuxx-install.sh
-```
-
-If you want to inspect the installer first:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/master/scripts/install.sh -o /tmp/chatmuxx-install.sh
-less /tmp/chatmuxx-install.sh
-sh /tmp/chatmuxx-install.sh
-```
-
-If a new terminal cannot find `cmx`, the installer tells you to manually add one of these lines to `~/.zshrc`:
+If a new terminal cannot find `cmx`, add one of these lines to `~/.zshrc`:
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 alias cmx="$HOME/.cargo/bin/cmx"
 ```
 
-## Requirements
-
-You need:
-
-- `tmux`
-- Codex CLI, already logged in locally
-- A WeChat account that can use the iLink Bot API
-
-Check them:
+Then reload zsh:
 
 ```bash
-tmux -V
-codex --version
+source ~/.zshrc
 ```
 
-If release download fails, the installer prints a source-install fallback. Source install requires `git` and Rust/Cargo.
+## Try It
 
-## First Run
+You need `tmux`, Codex CLI logged in locally, and a WeChat account that can use the iLink Bot API.
 
 1. Check your local setup:
 
@@ -81,7 +37,7 @@ If release download fails, the installer prints a source-install fallback. Sourc
 cmx doctor
 ```
 
-2. Log in to WeChat:
+2. Connect WeChat:
 
 ```bash
 cmx login wechat
@@ -89,15 +45,15 @@ cmx login wechat
 
 Scan the QR code in your terminal.
 
-3. Start ChatMuxX:
+3. Start the daemon:
 
 ```bash
 cmx daemon
 ```
 
-Keep this process running. It receives WeChat messages, controls tmux, and sends replies.
+Keep this terminal window running. The daemon receives WeChat messages, controls tmux, and sends replies back.
 
-4. Create a Codex session from WeChat:
+4. Send this from WeChat:
 
 ```text
 cmx n --id main /Users/you/Code/your-project codex
@@ -105,13 +61,24 @@ cmx n --id main /Users/you/Code/your-project codex
 
 Replace the path with your real project directory.
 
-5. Chat normally:
+5. Send a normal message from WeChat:
 
 ```text
-Explain this project
+Explain how this repo starts
 ```
 
-Normal text goes to Codex. Text starting with `cmx` controls ChatMuxX.
+Codex runs on your computer. The answer comes back to WeChat.
+
+## Requirements
+
+Check local tools:
+
+```bash
+tmux -V
+codex --version
+```
+
+Normal WeChat text goes to Codex. Text starting with `cmx` controls ChatMuxX.
 
 ## WeChat Commands
 
@@ -152,19 +119,9 @@ cmx esc main
 
 ## Update
 
-Run the installer again:
-
-```bash
-cmx update
-```
-
 For release installs, rerun the one-line installer to download the latest GitHub Release, including pre-releases.
 
 Use `CHATMUXX_VERSION=latest-stable` if you only want the latest stable release.
-
-`cmx update` is still available for source installs. It runs `git pull --ff-only` inside `~/.chatmuxx/src/ChatMuxX`, then reinstalls `cmx`.
-
-If `cmx update` says the source directory is missing, use the source-install fallback printed by the installer.
 
 ## Local State
 
