@@ -11,6 +11,7 @@ INSTALL_DIR="${CHATMUXX_INSTALL_DIR:-$HOME/.cargo/bin}"
 INSTALL_METHOD="${CHATMUXX_INSTALL_METHOD:-release}"
 VERSION="${CHATMUXX_VERSION:-latest-prerelease}"
 GITHUB_USER_AGENT="${CHATMUXX_GITHUB_USER_AGENT:-ChatMuxX installer}"
+SKIP_POST_INSTALL_RUN="${CHATMUXX_SKIP_POST_INSTALL_RUN:-0}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -204,8 +205,12 @@ install_release() {
   fi
 
   mkdir -p "$INSTALL_DIR"
-  cp "$tmp_dir/package/$bin_name" "$INSTALL_DIR/$bin_name"
-  chmod +x "$INSTALL_DIR/$bin_name"
+  target_path="$INSTALL_DIR/$bin_name"
+  tmp_target="$INSTALL_DIR/.${bin_name}.$$"
+  rm -f "$tmp_target"
+  cp "$tmp_dir/package/$bin_name" "$tmp_target"
+  chmod +x "$tmp_target"
+  mv -f "$tmp_target" "$target_path"
 }
 
 install_source() {
@@ -286,10 +291,15 @@ CMX_BIN="$(find_cmx)"
 
 echo
 echo "ChatMuxX installed:"
-"$CMX_BIN" --version
+if [ "$SKIP_POST_INSTALL_RUN" = "1" ]; then
+  echo "  $CMX_BIN"
+  echo "Post-install version/config checks skipped for self-update."
+else
+  "$CMX_BIN" --version
 
-if [ ! -f "$HOME/.chatmuxx/config.toml" ]; then
-  "$CMX_BIN" config init
+  if [ ! -f "$HOME/.chatmuxx/config.toml" ]; then
+    "$CMX_BIN" config init
+  fi
 fi
 
 echo

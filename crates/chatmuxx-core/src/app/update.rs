@@ -46,6 +46,7 @@ async fn update_from_release(version: Option<String>) -> Result<()> {
             command
         );
     }
+    command = format!("CHATMUXX_SKIP_POST_INSTALL_RUN=1 {command}");
 
     println!("Updating cmx from GitHub Releases...");
     println!("Running installer: {command}");
