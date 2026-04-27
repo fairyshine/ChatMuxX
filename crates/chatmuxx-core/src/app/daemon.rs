@@ -1208,7 +1208,7 @@ fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
             {
                 None
             }
-            _ => Some(*line),
+            _ => Some(clean_agent_content_line(line)),
         })
         .collect::<Vec<_>>();
     lines.join("\n")
@@ -1467,6 +1467,10 @@ fn is_noisy_agent_status_line(line: &str) -> bool {
 
 fn is_noisy_agent_ui_line(line: &str) -> bool {
     let trimmed = line.trim();
+    if is_agent_numbered_option_line(trimmed) {
+        return false;
+    }
+
     trimmed.starts_with("› ")
         || trimmed == "›"
         || trimmed.starts_with("❯")
@@ -1479,6 +1483,53 @@ fn is_noisy_agent_ui_line(line: &str) -> bool {
         || trimmed
             .chars()
             .all(|ch| is_separator_char(ch) || ch.is_whitespace())
+}
+
+fn clean_agent_content_line(line: &str) -> String {
+    let trimmed_end = line.trim_end();
+    if let Some(rest) = strip_agent_selection_marker(trimmed_end) {
+        if looks_like_numbered_option(rest) {
+            return rest.trim_end().to_owned();
+        }
+    }
+
+    trimmed_end.to_owned()
+}
+
+fn is_agent_numbered_option_line(line: &str) -> bool {
+    strip_agent_selection_marker(line).is_some_and(looks_like_numbered_option)
+}
+
+fn strip_agent_selection_marker(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    trimmed
+        .strip_prefix('›')
+        .or_else(|| trimmed.strip_prefix('❯'))
+        .map(str::trim_start)
+}
+
+fn looks_like_numbered_option(text: &str) -> bool {
+    let mut chars = text.chars();
+    let mut digits = 0;
+    while matches!(chars.clone().next(), Some(ch) if ch.is_ascii_digit()) {
+        digits += 1;
+        chars.next();
+        if digits > 3 {
+            return false;
+        }
+    }
+    if digits == 0 {
+        return false;
+    }
+
+    if !matches!(chars.next(), Some('.' | ')' | '、' | '．')) {
+        return false;
+    }
+
+    match chars.next() {
+        None => true,
+        Some(ch) => ch.is_whitespace(),
+    }
 }
 
 fn is_noisy_claude_ui_line(line: &str) -> bool {
@@ -1720,6 +1771,19 @@ mod tests {
     }
 
     #[test]
+    fn codex_pane_normalization_keeps_selected_numbered_option() {
+        let text = normalize_pane_text(
+            "Would you like to make the following edits?\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for these files (a)\n  3. No, and tell Codex what to do differently (esc)\nPress enter to confirm or esc to cancel",
+            ProviderKind::Codex,
+        );
+
+        assert_eq!(
+            text,
+            "Would you like to make the following edits?\n1. Yes, proceed (y)\n  2. Yes, and don't ask again for these files (a)\n  3. No, and tell Codex what to do differently (esc)\nPress enter to confirm or esc to cancel"
+        );
+    }
+
+    #[test]
     fn claude_pane_normalization_filters_welcome_screen() {
         let text = normalize_pane_text(
             "╭─── Claude Code v2.1.119 ─────────────────────────╮\n│            Welcome back!           │ Tips for getting started\n│               ▐▛███▜▌              │ Run /init to create a CLAUDE.md file\n│   Sonnet 4.6 · API Usage Billing   │ Recent activity\n│          ~/Code/ChatMuxX           │ No recent activity\n╰──────────────────────────────────────────────────╯\n❯\n  ? for shortcuts                             ● high · /effort",
@@ -1739,6 +1803,19 @@ mod tests {
         assert_eq!(
             text,
             "Claude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode"
+        );
+    }
+
+    #[test]
+    fn claude_pane_normalization_keeps_selected_numbered_option() {
+        let text = normalize_pane_text(
+            "Choose a mode:\n❯ 1. Accept once\n  2. Always accept\n  3. Cancel\n? for shortcuts",
+            ProviderKind::Claude,
+        );
+
+        assert_eq!(
+            text,
+            "Choose a mode:\n1. Accept once\n  2. Always accept\n  3. Cancel"
         );
     }
 
