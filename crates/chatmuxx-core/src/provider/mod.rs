@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub(crate) mod display;
 pub mod model;
 pub mod registry;
 pub mod shell;
