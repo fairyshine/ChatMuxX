@@ -9,6 +9,7 @@ use crate::{
         files::{ensure_state_dir, StatePaths},
         sessions::{OwnerId, SessionId},
     },
+    tmux::TmuxKey,
     ChatMuxXError, Result,
 };
 
@@ -59,9 +60,17 @@ pub async fn list() -> Result<()> {
         return Ok(());
     }
 
+    let mark_single_session_current =
+        sessions.len() == 1 && sessions.iter().all(|session| !session.active);
     for session in sessions {
+        let marker = if session.active || mark_single_session_current {
+            "current"
+        } else {
+            "-"
+        };
         println!(
-            "{}\t{}\t{:?}\t{}",
+            "{}\t{}\t{}\t{:?}\t{}",
+            marker,
             session.id.0,
             session.provider,
             session.status,
@@ -131,6 +140,29 @@ pub async fn capture(session_id: String) -> Result<()> {
     let text = manager.capture_pane(&SessionId(session_id)).await?;
 
     println!("{text}");
+    Ok(())
+}
+
+pub async fn esc(session_id: String) -> Result<()> {
+    send_key(session_id, TmuxKey::Escape, "Esc").await
+}
+
+pub async fn interrupt(session_id: String) -> Result<()> {
+    send_key(session_id, TmuxKey::CtrlC, "Ctrl-C").await
+}
+
+pub async fn enter(session_id: String) -> Result<()> {
+    send_key(session_id, TmuxKey::Enter, "Enter").await
+}
+
+async fn send_key(session_id: String, key: TmuxKey, label: &str) -> Result<()> {
+    let paths = StatePaths::from_default_root()?;
+    let config = load_config_or_default().await?;
+    let manager = SessionManager::new(config, paths);
+    let session_id = SessionId(session_id);
+    manager.send_key(&session_id, key).await?;
+
+    println!("sent {label} to {}", session_id.0);
     Ok(())
 }
 

@@ -2,294 +2,157 @@
 
 [English](README.md) | 简体中文
 
-ChatMuxX 可以让你通过移动端聊天应用控制本机 tmux 窗口中的 Codex、Claude Code 或 shell。当前 v0.1 路线重点支持通过腾讯 iLink HTTP 接入微信，并在本机 tmux 中运行 Codex。
+ChatMuxX 让你在微信里控制本机的 Codex、Claude Code 或 shell。
 
-ChatMuxX 是一个全新的 Rust 实现。它运行时不依赖 OpenClaw，也不会安装或修改 Codex/Claude 的 hooks、插件、skills 或配置文件。
+最常见的用法是：电脑上启动 `cmux daemon`，手机微信里发送一句话，ChatMuxX 把这句话转发给本机 tmux 里的 Codex，再把 Codex 的回复发回微信。
 
-## 快速开始
+ChatMuxX 不会安装或修改 Codex/Claude 的 hooks、插件、skills 或配置文件。
+
+## 先看效果
+
+微信里发送：
+
+```text
+cmux n --id main /Users/you/Code/your-project codex
+```
+
+然后继续在微信里发普通消息，例如：
+
+```text
+帮我看一下这个仓库怎么启动
+```
+
+Codex 会在你的电脑上运行，回复会发回微信。
+
+## 安装
+
+推荐一键安装：
 
 ```bash
-cargo build
-target/debug/cmux config init
-target/debug/cmux doctor
-target/debug/cmux login wechat
-target/debug/cmux daemon
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
 ```
 
-然后从微信发送：
+安装脚本会下载源码并执行 `cargo install`。安装完成后会得到 `cmux` 命令。
 
-```text
-cmux new /absolute/path/to/your/project codex
+如果想先看脚本内容再执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh -o /tmp/chatmuxx-install.sh
+less /tmp/chatmuxx-install.sh
+sh /tmp/chatmuxx-install.sh
 ```
 
-会话创建后，继续在同一个微信会话里聊天即可。普通消息会转发给 Codex，以 `cmux` 开头的消息用于控制 ChatMuxX。
+如果新终端里找不到 `cmux`，把下面这行加到你的 shell 配置里：
 
-## 为什么需要 ChatMuxX
-
-当你希望编码 Agent 继续运行在自己的电脑上，但又想用手机远程控制它时，ChatMuxX 会很有用：
-
-- 从微信启动本地 Codex 会话。
-- 无需把工作站暴露到 SSH，也能发送提示词。
-- 真实的 Agent 进程保留在 tmux 中，便于检查和恢复。
-- 移动端控制命令和 provider 原生 slash commands 分离。
-- 状态保存在易检查、易备份的本地文件中。
-
-## 当前状态
-
-项目目前已经支持一条最小可用的「微信到 Codex」流程：
-
-- 使用 `cmux login wechat` 通过二维码登录微信 iLink。
-- 使用 `cmux daemon` 启动前台守护进程。
-- 从微信创建 Codex tmux 窗口。
-- 将普通微信文本转发到当前活跃的 Codex 会话。
-- 捕获 tmux pane 输出并回传到微信。
-- 使用 `cmux ...` 命令列出、切换、截图、中断、发送 Enter/Esc 和关闭会话。
-
-仍处于早期阶段的部分：
-
-- Codex 输出来自 tmux pane capture，还不是结构化 transcript 解析。
-- `cmux screenshot` 目前发送的是文本捕获结果，不是图片。
-- `cmux close` 还没有确认提示。
-- daemon 目前以前台进程运行，尚未安装 launchd/systemd 服务。
-- Claude provider、更完整的恢复能力、假的 iLink 集成测试和多用户策略仍在推进中。
-
-## 架构
-
-ChatMuxX 将聊天通道、路由逻辑、provider、tmux 控制和状态存储分离：
-
-```text
-微信 / 移动端聊天应用
-        |
-        v
-cmux daemon  -> 移动端命令路由 -> 会话管理器
-        |                             |
-        |                             v
-        |                         tmux 窗口
-        |                             |
-        v                             v
- 本地状态文件                  Codex / Claude / shell
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
-重要边界：
+## 需要提前准备
 
-- 聊天通道只负责收发消息，不了解 tmux 内部细节。
-- Provider adapter 只负责启动 CLI，不了解聊天平台细节。
-- 会话状态使用稳定的 ChatMuxX session ID；tmux ID 只是运行时元数据。
-- 所有持久化状态默认保存在 `~/.chatmuxx` 下。
+电脑上需要有：
 
-## 环境要求
+- `tmux`
+- Rust / Cargo
+- Codex CLI，并且已经在本机登录
+- 可以使用 iLink Bot API 的微信账号
 
-- 安装了 `tmux` 的 macOS 或 Linux。
-- Rust 工具链和 `cargo`。
-- 已安装并在本机完成登录的 Codex CLI。
-- 一个可以使用 iLink Bot API 的微信账号。
-- 可选：如果后续想试验 Claude provider 路径，需要 Claude Code CLI。
-
-检查本机工具：
+可以先检查：
 
 ```bash
 tmux -V
-codex --version
 cargo --version
+codex --version
 ```
 
-## 基础操作
+## 第一次使用
 
-构建开发版二进制：
+1. 检查本机环境：
 
 ```bash
-cargo build
-```
-
-运行本地二进制：
-
-```bash
-target/debug/cmux --help
-```
-
-安装 `cmux` 到 Cargo 本地 bin 目录：
-
-```bash
-cargo install --path crates/cmux
-```
-
-安装后直接使用 `cmux`：
-
-```bash
-cmux --help
-```
-
-执行本地快速检查：
-
-```bash
-target/debug/cmux doctor
-```
-
-启动前台 daemon：
-
-```bash
-target/debug/cmux daemon
-```
-
-列出本地会话：
-
-```bash
-target/debug/cmux sessions list
-```
-
-不经过微信，创建一个本地测试会话：
-
-```bash
-target/debug/cmux sessions new /tmp shell
-```
-
-## 首次运行
-
-创建默认配置：
-
-```bash
-target/debug/cmux config init
-```
-
-该命令会创建：
-
-```text
-~/.chatmuxx/config.toml
-```
-
-执行本地健康检查：
-
-```bash
-target/debug/cmux doctor
-```
-
-登录微信：
-
-```bash
-target/debug/cmux login wechat
-```
-
-命令会在终端中打印二维码。使用微信扫码并确认登录。ChatMuxX 会把账号 token 存储在：
-
-```text
-~/.chatmuxx/accounts.json
-```
-
-启动 daemon：
-
-```bash
-target/debug/cmux daemon
-```
-
-保持该进程持续运行。它负责微信 long-poll 循环、命令路由、tmux 输入和输出投递。
-
-## 从微信使用
-
-发送以 `cmux` 为前缀的 ChatMuxX 命令。
-
-在真实项目目录中创建一个 Codex 会话：
-
-```text
-cmux new --id main /Users/wumengsong/Code/ChatMuxX codex
-```
-
-会话创建后，继续在同一个微信会话里发送普通消息。这些消息会被转发给 Codex。如果省略 `--id`，ChatMuxX 会创建类似 `s-mogm4ctu` 的短 id。
-
-常用命令：
-
-```text
-cmux help
-cmux sessions
-cmux switch <session-id>
-cmux rename [session-id] <new-id>
-cmux screenshot
-cmux interrupt
-cmux enter
-cmux esc
-cmux close
-```
-
-Provider 原生的 slash commands 会被转发到当前 CLI，因此 `/...` 不会被用作 ChatMuxX 命令。
-
-## 本地 CLI 会话测试
-
-你可以不经过微信，直接测试 tmux/provider 路径：
-
-```bash
-target/debug/cmux sessions new --id main /tmp codex
-target/debug/cmux sessions list
-target/debug/cmux sessions send <session-id> "hello" --enter
-target/debug/cmux sessions capture <session-id>
-target/debug/cmux sessions rename <session-id> <new-id>
-target/debug/cmux sessions close <session-id>
-```
-
-也支持 shell：
-
-```bash
-target/debug/cmux sessions new /tmp shell
-```
-
-当前 `cmux` 暴露的 CLI 子命令：
-
-```text
-cmux daemon [--config <path>]
-cmux login wechat
 cmux doctor
-cmux config init [--path <path>]
-cmux sessions new [--id <id>] <workspace> [provider] [-- <extra-provider-args>...]
-cmux sessions list
-cmux sessions rename <session-id> <new-id>
-cmux sessions send <session-id> <text> [--enter]
-cmux sessions capture <session-id>
-cmux sessions close <session-id>
 ```
 
-## 配置
+2. 登录微信：
 
-默认配置路径：
+```bash
+cmux login wechat
+```
+
+终端里会显示二维码，用微信扫码确认。
+
+3. 启动 ChatMuxX：
+
+```bash
+cmux daemon
+```
+
+这个窗口要保持运行。后续它负责收微信消息、控制 tmux、发送回复。
+
+4. 从微信创建 Codex 会话：
 
 ```text
-~/.chatmuxx/config.toml
+cmux n --id main /Users/you/Code/your-project codex
 ```
 
-重要默认值：
+把路径换成你真实的项目目录。
 
-```toml
-[daemon]
-tmux_session = "chatmuxx"
-poll_interval_ms = 1500
+5. 开始聊天：
 
-[owner]
-wechat_user_id = ""
-
-[wechat]
-enabled = true
-base_url = "https://ilinkai.weixin.qq.com"
-bot_type = "3"
-long_poll_timeout_ms = 38000
-
-[providers.codex]
-command = "codex"
-args = []
-env = {}
-
-[providers.claude]
-command = "claude"
-args = []
-env = {}
-
-[providers.shell]
-command = "bash"
-args = []
-env = {}
+```text
+解释一下这个项目
 ```
 
-Provider CLI 必须在明确的工作目录中启动。从微信使用 `cmux new /absolute/path codex`，或在本地使用 `cmux sessions new /absolute/path codex`。
+普通文字会发送给 Codex。以 `cmux` 开头的是 ChatMuxX 控制命令。
+
+## 常用微信命令
+
+```text
+cmux h                         帮助
+cmux n <项目路径> codex        新建 Codex 会话
+cmux ls                        查看会话
+cmux sw <session-id>           切换会话
+cmux mv <new-id>               重命名当前会话
+cmux ss                        查看当前终端文本
+cmux i                         中断当前任务，等同 Ctrl-C
+cmux e                         发送 Enter
+cmux esc                       发送 Esc
+cmux rm                        关闭当前会话
+```
+
+Provider 自己的 `/...` 命令会直接发给 Codex 或 Claude，不会被 ChatMuxX 拦截。
+
+## 本地命令
+
+不经过微信也可以直接测试：
+
+```bash
+cmux n --id test /tmp shell
+cmux ls
+cmux p test "echo hello" --enter
+cmux cap test
+cmux rm test
+```
+
+本地控制命令通常需要写 session id，例如：
+
+```bash
+cmux i main
+cmux e main
+cmux esc main
+```
+
+## 更新
+
+再次运行安装命令即可：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fairyshine/ChatMuxX/main/scripts/install.sh | sh
+```
 
 ## 状态文件
 
-ChatMuxX 会把本地状态存储在：
+ChatMuxX 的本地状态默认放在：
 
 ```text
 ~/.chatmuxx
@@ -297,66 +160,18 @@ ChatMuxX 会把本地状态存储在：
 
 常见文件：
 
-```text
-config.toml
-accounts.json
-state.json
-monitor_state.json
-history.jsonl
-```
+- `config.toml`：配置
+- `accounts.json`：微信登录信息
+- `state.json`：会话和绑定
+- `history.jsonl`：消息记录
+- `monitor_state.json`：tmux 输出捕获状态
 
-`accounts.json` 包含敏感的微信凭据，不应分享给他人。
+## 仍在开发中
 
-## 安全说明
+当前已经能跑通微信控制本机 Codex 的基本流程，但仍是早期版本：
 
-- 将 `~/.chatmuxx/accounts.json` 视为密钥文件。
-- 只在你接受移动端聊天账号控制本机 tmux、Codex、Claude 和 shell 的机器上运行 ChatMuxX。
-- 使用绝对工作区路径，确保 provider 在预期项目目录中启动。
-- 分享日志前先检查内容；transcript 和 pane capture 可能包含代码、路径、提示词或密钥。
-- 当前 v0.1 流程面向单 owner 使用，还没有实现完整的多用户策略控制。
+- daemon 目前以前台进程运行，还没有安装成系统服务。
+- `cmux ss` 现在返回文本，不是真截图。
+- Claude provider、恢复能力、多用户策略还会继续完善。
 
-## 故障排查
-
-如果 `cmux daemon` 提示没有微信账号，请运行：
-
-```bash
-target/debug/cmux login wechat
-```
-
-如果微信命令被忽略，请确认消息来自扫描登录二维码的同一个微信用户。
-
-如果 Codex 无法启动，请检查：
-
-```bash
-codex --version
-```
-
-如果 tmux 窗口没有创建，请检查：
-
-```bash
-tmux -V
-```
-
-运行完整本地检查：
-
-```bash
-target/debug/cmux doctor
-```
-
-## 仓库结构
-
-```text
-crates/cmux/              # 面向用户的 cmux CLI
-crates/chatmuxx-core/    # config、daemon、sessions、tmux、providers、channels、state
-docs/design/             # 产品和架构设计说明
-docs/development/        # 实现文档、任务索引、测试策略
-```
-
-## 开发文档
-
-- [设计文档](docs/design/README.md)
-- [开发文档](docs/development/README.md)
-- [仓库架构](docs/development/repository-architecture.md)
-- [状态与存储](docs/development/state-and-storage.md)
-- [测试策略](docs/development/testing-strategy.md)
-- [参考项目](docs/development/reference-projects.md)
+开发和设计文档在 [docs](docs/) 目录。

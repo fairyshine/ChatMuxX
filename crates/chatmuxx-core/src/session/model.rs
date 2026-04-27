@@ -31,6 +31,7 @@ pub struct SessionSummary {
     pub workspace: PathBuf,
     pub status: SessionStatus,
     pub display_name: String,
+    pub active: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

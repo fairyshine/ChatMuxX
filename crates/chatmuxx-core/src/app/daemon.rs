@@ -1,7 +1,7 @@
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -71,6 +71,7 @@ pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
     let mut monitor_interval =
         tokio::time::interval(Duration::from_millis(config.daemon.poll_interval_ms));
     let manager = SessionManager::new(config.clone(), paths.clone());
+    manager.configure_managed_tmux_session().await?;
 
     loop {
         tokio::select! {
@@ -285,6 +286,16 @@ async fn handle_bridge_command(
                 .await?;
                 return Ok(());
             };
+            if workspace_looks_like_option(&workspace) {
+                send_wechat_reply(
+                    paths,
+                    &event.account_id,
+                    &event.conversation_id,
+                    "项目路径解析失败：`--id` 要放在 `cmux new` 后面，示例：`cmux new --id main /项目路径 codex`。",
+                )
+                .await?;
+                return Ok(());
+            }
             let provider = args.provider.unwrap_or(ProviderKind::Codex);
             let session = manager
                 .create_session(CreateSessionRequest {
@@ -307,7 +318,8 @@ async fn handle_bridge_command(
         }
         MobileCommand::Sessions => {
             let sessions = manager.list_sessions().await?;
-            let text = format_session_list(&sessions);
+            let current_session_id = active_session_id(paths, &event.conversation_id).await?;
+            let text = format_session_list(&sessions, current_session_id.as_ref());
             send_wechat_reply(paths, &event.account_id, &event.conversation_id, &text).await?;
         }
         MobileCommand::Switch { session_id } => {
@@ -456,6 +468,13 @@ async fn handle_bridge_command(
     Ok(())
 }
 
+fn workspace_looks_like_option(workspace: &Path) -> bool {
+    workspace
+        .as_os_str()
+        .to_str()
+        .is_some_and(|value| value.starts_with('-'))
+}
+
 async fn send_key_to_active(
     paths: &StatePaths,
     manager: &SessionManager,
@@ -476,6 +495,15 @@ async fn send_key_to_active(
 }
 
 async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Result<()> {
+    let pruned = manager.prune_missing_tmux_sessions().await?;
+    if pruned.removed_sessions > 0 || pruned.removed_bindings > 0 {
+        tracing::debug!(
+            removed_sessions = pruned.removed_sessions,
+            removed_bindings = pruned.removed_bindings,
+            "pruned sessions whose tmux panes disappeared"
+        );
+    }
+
     let state: AppState = load_json_or_default(&paths.state).await?;
     let mut monitor: MonitorState = load_json_or_default(&paths.monitor_state).await?;
     monitor.schema_version = 1;
@@ -495,12 +523,17 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
         let pane = match manager.capture_pane(&session.id).await {
             Ok(pane) => pane,
             Err(err) if err.is_missing_tmux_target() => {
-                tracing::info!(
+                tracing::debug!(
                     session_id = %session.id.0,
                     error = %err,
                     "tmux target disappeared; marking session dead"
                 );
-                manager.mark_session_dead(&session.id).await?;
+                monitor.sessions.remove(&session.id);
+                if let Err(mark_err) = manager.mark_session_dead(&session.id).await {
+                    if !matches!(mark_err, ChatMuxXError::SessionNotFound(_)) {
+                        return Err(mark_err);
+                    }
+                }
                 continue;
             }
             Err(err) => return Err(err),
@@ -523,7 +556,7 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
         if pane_changed {
             let previous_text = previous_monitor.and_then(|state| state.last_pane_text.as_deref());
             let footer_text = extract_terminal_footer(&pane, session.provider);
-            if let Some(raw_delta) = pane_delta(previous_text, &pane, ProviderKind::Shell) {
+            if let Some(raw_delta) = raw_pane_delta(previous_text, &pane) {
                 append_history(
                     &paths.history,
                     HistoryEvent::ProviderOutput {
@@ -786,15 +819,25 @@ fn help_text() -> &'static str {
     "ChatMuxX 命令：\ncmux new --id main /项目路径 codex\ncmux sessions\ncmux switch <session-id>\ncmux rename [session-id] <new-id>\ncmux screenshot\ncmux close\ncmux prune\n普通文字会发送给当前 Codex 会话。"
 }
 
-fn format_session_list(sessions: &[SessionSummary]) -> String {
+fn format_session_list(
+    sessions: &[SessionSummary],
+    current_session_id: Option<&SessionId>,
+) -> String {
     if sessions.is_empty() {
         return "会话列表：没有会话。".to_owned();
     }
 
     let mut lines = vec![format!("会话列表：{} 个", sessions.len())];
     for session in sessions {
+        let marker = if current_session_id == Some(&session.id) {
+            "当前 "
+        } else if current_session_id.is_none() && session.active {
+            "活动 "
+        } else {
+            ""
+        };
         lines.push(format!(
-            "- {} · {} · {:?}\n  {}",
+            "- {marker}{} · {} · {:?}\n  {}",
             session.id.0,
             session.provider,
             session.status,
@@ -1058,7 +1101,21 @@ fn trim_for_chat(text: &str) -> String {
 }
 
 fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> Option<String> {
-    let current = normalize_pane_text(current, provider);
+    text_delta(previous, current, |text| {
+        normalize_pane_text(text, provider)
+    })
+}
+
+fn raw_pane_delta(previous: Option<&str>, current: &str) -> Option<String> {
+    text_delta(previous, current, normalize_raw_pane_text)
+}
+
+fn text_delta(
+    previous: Option<&str>,
+    current: &str,
+    normalize: impl Fn(&str) -> String,
+) -> Option<String> {
+    let current = normalize(current);
     if current.trim().is_empty() {
         return None;
     }
@@ -1066,7 +1123,7 @@ fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> 
     let Some(previous) = previous else {
         return Some(current);
     };
-    let previous = normalize_pane_text(previous, provider);
+    let previous = normalize(previous);
 
     if current == previous {
         return None;
@@ -1094,7 +1151,18 @@ fn pane_delta(previous: Option<&str>, current: &str, provider: ProviderKind) -> 
     Some(current)
 }
 
+fn normalize_raw_pane_text(text: &str) -> String {
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
+    if provider == ProviderKind::Shell {
+        return normalize_shell_pane_text(text);
+    }
+
     let raw_lines = text
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -1115,6 +1183,78 @@ fn normalize_pane_text(text: &str, provider: ProviderKind) -> String {
         })
         .collect::<Vec<_>>();
     lines.join("\n")
+}
+
+fn normalize_shell_pane_text(text: &str) -> String {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .filter(|line| !is_noisy_shell_line(line))
+        .filter(|line| !is_shell_prompt_or_echo_line(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn is_noisy_shell_line(line: &str) -> bool {
+    let line = line.trim();
+    line == "The default interactive shell is now zsh."
+        || line == "To update your account to use zsh, please run `chsh -s /bin/zsh`."
+        || line.starts_with("For more details, please visit https://support.apple.com/kb/")
+}
+
+fn is_shell_prompt_or_echo_line(line: &str) -> bool {
+    let line = line.trim();
+    if line.is_empty() {
+        return true;
+    }
+
+    if line.starts_with("cmux> ") || line == "cmux>" {
+        return true;
+    }
+
+    if starts_with_prompt_marker(line) {
+        return true;
+    }
+
+    if let Some(index) = prompt_marker_index(line) {
+        let prefix = line[..index].trim();
+        return !prefix.is_empty()
+            && prefix.chars().count() <= 80
+            && looks_like_shell_prompt_prefix(prefix);
+    }
+
+    let Some(last) = line.chars().last() else {
+        return false;
+    };
+    matches!(last, '$' | '%' | '#')
+        && line.chars().count() <= 80
+        && looks_like_shell_prompt_prefix(line.trim_end_matches(['$', '%', '#']).trim())
+}
+
+fn starts_with_prompt_marker(line: &str) -> bool {
+    ["$ ", "% ", "# ", "> "]
+        .iter()
+        .any(|marker| line.starts_with(marker))
+}
+
+fn prompt_marker_index(line: &str) -> Option<usize> {
+    ["$ ", "% ", "# ", "> "]
+        .iter()
+        .filter_map(|marker| line.find(marker))
+        .min()
+}
+
+fn looks_like_shell_prompt_prefix(prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return false;
+    }
+    prefix.starts_with("bash-")
+        || prefix.starts_with("sh-")
+        || prefix.contains('@')
+        || prefix.contains(':')
+        || prefix.contains('~')
+        || prefix.contains('/')
+        || prefix.ends_with('>')
 }
 
 fn extract_terminal_footer(text: &str, provider: ProviderKind) -> Option<String> {
@@ -1377,17 +1517,41 @@ mod tests {
 
     #[test]
     fn session_list_is_formatted_for_chat() {
-        let text = format_session_list(&[SessionSummary {
-            id: SessionId("sess-1".to_owned()),
-            provider: ProviderKind::Codex,
-            workspace: PathBuf::from("/tmp/project"),
-            status: SessionStatus::Running,
-            display_name: "codex:/tmp/project".to_owned(),
-        }]);
+        let text = format_session_list(
+            &[SessionSummary {
+                id: SessionId("sess-1".to_owned()),
+                provider: ProviderKind::Codex,
+                workspace: PathBuf::from("/tmp/project"),
+                status: SessionStatus::Running,
+                display_name: "codex:/tmp/project".to_owned(),
+                active: true,
+            }],
+            Some(&SessionId("sess-1".to_owned())),
+        );
 
         assert_eq!(
             text,
-            "会话列表：1 个\n- sess-1 · codex · Running\n  /tmp/project"
+            "会话列表：1 个\n- 当前 sess-1 · codex · Running\n  /tmp/project"
+        );
+    }
+
+    #[test]
+    fn session_list_can_show_globally_active_session() {
+        let text = format_session_list(
+            &[SessionSummary {
+                id: SessionId("sess-1".to_owned()),
+                provider: ProviderKind::Codex,
+                workspace: PathBuf::from("/tmp/project"),
+                status: SessionStatus::Running,
+                display_name: "codex:/tmp/project".to_owned(),
+                active: true,
+            }],
+            None,
+        );
+
+        assert_eq!(
+            text,
+            "会话列表：1 个\n- 活动 sess-1 · codex · Running\n  /tmp/project"
         );
     }
 
@@ -1454,6 +1618,26 @@ mod tests {
         );
 
         assert_eq!(text, "answer");
+    }
+
+    #[test]
+    fn shell_pane_normalization_filters_prompts_and_command_echo() {
+        let text = normalize_pane_text(
+            "The default interactive shell is now zsh.\nTo update your account to use zsh, please run `chsh -s /bin/zsh`.\nFor more details, please visit https://support.apple.com/kb/HT208050.\nbash-3.2$ pwd\n/Users/wumengsong/Code/ChatMuxX\nbash-3.2$",
+            ProviderKind::Shell,
+        );
+
+        assert_eq!(text, "/Users/wumengsong/Code/ChatMuxX");
+    }
+
+    #[test]
+    fn shell_pane_normalization_handles_zsh_style_prompts() {
+        let text = normalize_pane_text(
+            "wumengsong@Mac ChatMuxX % ls\nREADME.md\nCargo.toml\nwumengsong@Mac ChatMuxX %",
+            ProviderKind::Shell,
+        );
+
+        assert_eq!(text, "README.md\nCargo.toml");
     }
 
     #[test]

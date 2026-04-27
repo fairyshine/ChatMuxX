@@ -9,6 +9,12 @@ use super::{
     parser::{parse_windows, LIST_WINDOWS_FORMAT},
 };
 
+const MANAGED_WINDOW_WIDTH: &str = "240";
+const MANAGED_WINDOW_HEIGHT: &str = "80";
+const MANAGED_HISTORY_LIMIT: &str = "10000";
+const CAPTURE_SCROLLBACK_LINES: &str = "-5000";
+const LAUNCH_AFTER_RESIZE_DELAY_SECONDS: &str = "0.10";
+
 #[derive(Clone, Debug, Default)]
 pub struct TmuxClient;
 
@@ -19,6 +25,7 @@ impl TmuxClient {
 
     pub async fn ensure_managed_session(&self, name: &str) -> Result<()> {
         if self.has_session(name).await? {
+            self.configure_managed_session(name).await?;
             return Ok(());
         }
 
@@ -27,6 +34,10 @@ impl TmuxClient {
             "-d",
             "-s",
             name,
+            "-x",
+            MANAGED_WINDOW_WIDTH,
+            "-y",
+            MANAGED_WINDOW_HEIGHT,
             "-n",
             "__main__",
             "sh",
@@ -34,12 +45,33 @@ impl TmuxClient {
             "sleep infinity",
         ])
         .await?;
+        self.configure_managed_session(name).await?;
         Ok(())
     }
 
     pub async fn has_session(&self, name: &str) -> Result<bool> {
         let output = Command::new("tmux")
             .args(["has-session", "-t", name])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+
+        match output {
+            Ok(status) => Ok(status.success()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Err(ChatMuxXError::CommandNotFound("tmux".to_owned()))
+            }
+            Err(err) => Err(ChatMuxXError::Io {
+                path: "tmux".into(),
+                source: err,
+            }),
+        }
+    }
+
+    pub async fn has_pane(&self, pane_id: &str) -> Result<bool> {
+        let output = Command::new("tmux")
+            .args(["display-message", "-p", "-t", pane_id, "#{pane_id}"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -92,18 +124,16 @@ impl TmuxClient {
             .map(|(key, value)| format!("{}={}", shell_escape(key), shell_escape(value)))
             .collect::<Vec<_>>()
             .join(" ");
-        let full_command = if env_prefix.is_empty() {
-            command
-        } else {
-            format!("{env_prefix} {command}")
-        };
+        let full_command = wrap_launch_command(&command, &env_prefix);
         args.push(full_command);
 
         let output = self.run_owned(args).await?;
-        parse_windows(&output)?
+        let window = parse_windows(&output)?
             .into_iter()
             .next()
-            .ok_or_else(|| ChatMuxXError::TmuxParse("new-window returned no rows".to_owned()))
+            .ok_or_else(|| ChatMuxXError::TmuxParse("new-window returned no rows".to_owned()))?;
+        self.resize_window(&window.window_id).await?;
+        Ok(window)
     }
 
     pub async fn send_text(&self, pane_id: &str, text: &str) -> Result<()> {
@@ -118,7 +148,17 @@ impl TmuxClient {
     }
 
     pub async fn capture_pane(&self, pane_id: &str) -> Result<String> {
-        self.run(["capture-pane", "-p", "-t", pane_id]).await
+        self.resize_window(pane_id).await?;
+        self.run([
+            "capture-pane",
+            "-p",
+            "-J",
+            "-S",
+            CAPTURE_SCROLLBACK_LINES,
+            "-t",
+            pane_id,
+        ])
+        .await
     }
 
     pub async fn close_window(&self, window_id: &str) -> Result<()> {
@@ -158,6 +198,37 @@ impl TmuxClient {
             .trim_end()
             .to_owned())
     }
+
+    async fn configure_managed_session(&self, name: &str) -> Result<()> {
+        self.run([
+            "set-option",
+            "-t",
+            name,
+            "history-limit",
+            MANAGED_HISTORY_LIMIT,
+        ])
+        .await?;
+        self.run(["set-window-option", "-t", name, "window-size", "manual"])
+            .await?;
+        for window in self.list_windows(name).await? {
+            self.resize_window(&window.window_id).await?;
+        }
+        Ok(())
+    }
+
+    async fn resize_window(&self, window_id: &str) -> Result<()> {
+        self.run([
+            "resize-window",
+            "-t",
+            window_id,
+            "-x",
+            MANAGED_WINDOW_WIDTH,
+            "-y",
+            MANAGED_WINDOW_HEIGHT,
+        ])
+        .await?;
+        Ok(())
+    }
 }
 
 fn shell_join(parts: &[String]) -> String {
@@ -166,6 +237,15 @@ fn shell_join(parts: &[String]) -> String {
         .map(|part| shell_escape(part))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn wrap_launch_command(command: &str, env_prefix: &str) -> String {
+    let exec_command = if env_prefix.is_empty() {
+        format!("exec {command}")
+    } else {
+        format!("{env_prefix} exec {command}")
+    };
+    format!("sleep {LAUNCH_AFTER_RESIZE_DELAY_SECONDS}; {exec_command}")
 }
 
 fn shell_escape(value: &str) -> String {
@@ -199,6 +279,19 @@ mod tests {
         let parts = vec!["echo".to_owned(), "hello world".to_owned()];
 
         assert_eq!(shell_join(&parts), "echo 'hello world'");
+    }
+
+    #[test]
+    fn launch_command_waits_for_managed_resize() {
+        assert_eq!(wrap_launch_command("codex", ""), "sleep 0.10; exec codex");
+    }
+
+    #[test]
+    fn launch_command_preserves_environment_assignments() {
+        assert_eq!(
+            wrap_launch_command("codex", "FOO=bar BAZ=qux"),
+            "sleep 0.10; FOO=bar BAZ=qux exec codex"
+        );
     }
 
     #[tokio::test]

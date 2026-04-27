@@ -3,7 +3,12 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "cmux", version, about = "ChatMuxX command line interface")]
+#[command(
+    name = "cmux",
+    version,
+    about = "ChatMuxX command line interface",
+    disable_help_subcommand = true
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -11,16 +16,53 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Print help.
+    #[command(alias = "h")]
+    Help,
     /// Run the ChatMuxX daemon in the foreground.
+    #[command(alias = "d")]
     Daemon(DaemonArgs),
     /// Login to a chat channel.
+    #[command(alias = "l")]
     Login(LoginArgs),
     /// Validate local configuration and dependencies.
+    #[command(alias = "check")]
     Doctor,
     /// Manage local configuration.
+    #[command(alias = "cfg")]
     Config(ConfigArgs),
     /// Inspect and manage ChatMuxX sessions.
+    #[command(alias = "s")]
     Sessions(SessionsArgs),
+    /// Create a managed tmux window for local development/testing.
+    #[command(alias = "n")]
+    New(SessionsNewArgs),
+    /// List known ChatMuxX sessions.
+    #[command(aliases = ["ls", "windows"])]
+    List,
+    /// Close a managed session/window.
+    #[command(alias = "rm")]
+    Close { session_id: String },
+    /// Rename a session id.
+    #[command(alias = "mv")]
+    Rename { session_id: String, new_id: String },
+    /// Delete Dead and Closed session records from local state.
+    #[command(aliases = ["clean", "cleanup"])]
+    Prune,
+    /// Send literal text to a session pane.
+    #[command(alias = "p")]
+    Send(SessionsSendArgs),
+    /// Capture the current text from a session pane.
+    #[command(aliases = ["cap", "screenshot", "shot", "ss"])]
+    Capture { session_id: String },
+    /// Send Escape to a session pane.
+    Esc { session_id: String },
+    /// Send Ctrl-C to a session pane.
+    #[command(aliases = ["ctrl-c", "stop", "i"])]
+    Interrupt { session_id: String },
+    /// Send Enter to a session pane.
+    #[command(alias = "e")]
+    Enter { session_id: String },
 }
 
 #[derive(Debug, Args)]
@@ -39,6 +81,7 @@ pub struct LoginArgs {
 #[derive(Debug, Subcommand)]
 pub enum LoginChannel {
     /// Login to WeChat through the iLink HTTP API.
+    #[command(alias = "wx")]
     Wechat,
 }
 
@@ -51,6 +94,7 @@ pub struct ConfigArgs {
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
     /// Create an initial config.toml.
+    #[command(alias = "i")]
     Init(ConfigInitArgs),
 }
 
@@ -70,18 +114,25 @@ pub struct SessionsArgs {
 #[derive(Debug, Subcommand)]
 pub enum SessionsCommand {
     /// Create a managed tmux window for local development/testing.
+    #[command(alias = "n")]
     New(SessionsNewArgs),
     /// List known ChatMuxX sessions.
+    #[command(alias = "ls")]
     List,
     /// Close a managed session/window.
+    #[command(alias = "rm")]
     Close { session_id: String },
     /// Rename a session id.
+    #[command(alias = "mv")]
     Rename { session_id: String, new_id: String },
     /// Delete Dead and Closed session records from local state.
+    #[command(aliases = ["clean", "cleanup"])]
     Prune,
     /// Send literal text to a session pane.
+    #[command(alias = "p")]
     Send(SessionsSendArgs),
     /// Capture the current text from a session pane.
+    #[command(aliases = ["cap", "screenshot", "shot", "ss"])]
     Capture { session_id: String },
 }
 

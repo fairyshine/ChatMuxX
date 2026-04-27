@@ -40,6 +40,12 @@ impl SessionManager {
         }
     }
 
+    pub async fn configure_managed_tmux_session(&self) -> Result<()> {
+        self.tmux
+            .ensure_managed_session(&self.config.daemon.tmux_session)
+            .await
+    }
+
     pub async fn create_session(&self, req: CreateSessionRequest) -> Result<SessionRecord> {
         validate_workspace(&req.workspace)?;
 
@@ -118,7 +124,17 @@ impl SessionManager {
     pub async fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
         self.prune_inactive_sessions().await?;
         let state = self.load_state().await?;
-        Ok(state.sessions.iter().map(summary_from_record).collect())
+        let active_session_ids = state
+            .bindings
+            .iter()
+            .filter(|binding| binding.active)
+            .map(|binding| binding.session_id.clone())
+            .collect::<HashSet<_>>();
+        Ok(state
+            .sessions
+            .iter()
+            .map(|record| summary_from_record(record, active_session_ids.contains(&record.id)))
+            .collect())
     }
 
     pub async fn resolve_session_id(&self, session_id: &SessionId) -> Result<SessionId> {
@@ -178,6 +194,33 @@ impl SessionManager {
         self.save_state(&state).await?;
         self.remove_monitor_records(&removed_ids).await?;
 
+        Ok(result)
+    }
+
+    pub async fn prune_missing_tmux_sessions(&self) -> Result<PruneSessionsResult> {
+        let mut state = self.load_state().await?;
+        let mut removed_ids = HashSet::new();
+        for session in state.sessions.iter().filter(|session| {
+            matches!(
+                session.status,
+                SessionStatus::Starting | SessionStatus::Running | SessionStatus::WaitingInput
+            )
+        }) {
+            let Some(tmux) = &session.tmux else {
+                continue;
+            };
+            if !self.tmux.has_pane(&tmux.pane_id).await? {
+                removed_ids.insert(session.id.clone());
+            }
+        }
+
+        if removed_ids.is_empty() {
+            return Ok(PruneSessionsResult::default());
+        }
+
+        let result = remove_session_records(&mut state, &removed_ids);
+        self.save_state(&state).await?;
+        self.remove_monitor_records(&removed_ids).await?;
         Ok(result)
     }
 
@@ -366,13 +409,14 @@ fn resolve_session_id_in_state(state: &AppState, input: &SessionId) -> Result<Se
     }
 }
 
-fn summary_from_record(record: &SessionRecord) -> SessionSummary {
+fn summary_from_record(record: &SessionRecord, active: bool) -> SessionSummary {
     SessionSummary {
         id: record.id.clone(),
         provider: record.provider,
         workspace: record.workspace.clone(),
         status: record.status.clone(),
         display_name: format!("{}:{}", record.provider, record.workspace.display()),
+        active,
     }
 }
 
@@ -454,10 +498,11 @@ mod tests {
             updated_at: "1".to_owned(),
         };
 
-        let summary = summary_from_record(&record);
+        let summary = summary_from_record(&record, true);
 
         assert_eq!(summary.id, record.id);
         assert_eq!(summary.display_name, "shell:/tmp/project");
+        assert!(summary.active);
     }
 
     #[test]

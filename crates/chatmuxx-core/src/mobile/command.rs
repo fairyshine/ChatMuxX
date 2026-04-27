@@ -87,8 +87,9 @@ fn parse_bridge_command(text: &str) -> MobileCommand {
 
     match name.as_str() {
         "help" | "h" => MobileCommand::Help,
-        "new" => MobileCommand::New(parse_new_args(rest)),
-        "sessions" | "windows" | "ls" => MobileCommand::Sessions,
+        "new" | "n" => MobileCommand::New(parse_new_args(rest)),
+        "sessions" | "windows" | "s" => parse_sessions_command(rest),
+        "list" | "ls" => MobileCommand::Sessions,
         "switch" | "sw" => MobileCommand::Switch {
             session_id: first_session_id(rest),
         },
@@ -96,19 +97,45 @@ fn parse_bridge_command(text: &str) -> MobileCommand {
             session_id: first_session_id(rest),
         },
         "rename" | "mv" => parse_rename_args(rest),
-        "prune" | "cleanup" => MobileCommand::Prune,
+        "prune" | "clean" | "cleanup" => MobileCommand::Prune,
         "provider" | "use" => MobileCommand::Provider {
             provider: rest
                 .first()
                 .and_then(|value| ProviderKind::from_str(value).ok()),
         },
-        "screenshot" | "shot" => MobileCommand::Screenshot,
+        "capture" | "cap" | "screenshot" | "shot" | "ss" => MobileCommand::Screenshot,
         "esc" => MobileCommand::Esc,
-        "interrupt" | "ctrl-c" | "stop" => MobileCommand::Interrupt,
-        "enter" => MobileCommand::Enter,
-        "recover" => MobileCommand::Recover {
+        "interrupt" | "ctrl-c" | "stop" | "i" => MobileCommand::Interrupt,
+        "enter" | "e" => MobileCommand::Enter,
+        "recover" | "re" => MobileCommand::Recover {
             session_id: first_session_id(rest),
         },
+        other => MobileCommand::Unknown {
+            name: other.to_owned(),
+            args: rest,
+        },
+    }
+}
+
+fn parse_sessions_command(args: Vec<String>) -> MobileCommand {
+    let mut args = args.into_iter();
+    let Some(name) = args.next() else {
+        return MobileCommand::Sessions;
+    };
+    let rest = args.collect::<Vec<_>>();
+
+    match name.as_str() {
+        "new" | "n" => MobileCommand::New(parse_new_args(rest)),
+        "list" | "ls" => MobileCommand::Sessions,
+        "switch" | "sw" => MobileCommand::Switch {
+            session_id: first_session_id(rest),
+        },
+        "close" | "rm" => MobileCommand::Close {
+            session_id: first_session_id(rest),
+        },
+        "rename" | "mv" => parse_rename_args(rest),
+        "prune" | "clean" | "cleanup" => MobileCommand::Prune,
+        "capture" | "cap" | "screenshot" | "shot" | "ss" => MobileCommand::Screenshot,
         other => MobileCommand::Unknown {
             name: other.to_owned(),
             args: rest,
@@ -279,6 +306,66 @@ mod tests {
     }
 
     #[test]
+    fn new_command_parses_custom_session_id_after_provider() {
+        assert_eq!(
+            parse_mobile_text("cmux new /tmp/project codex --id main", false),
+            ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: Some(SessionId("main".to_owned())),
+                workspace: Some(PathBuf::from("/tmp/project")),
+                provider: Some(ProviderKind::Codex),
+                extra_args: Vec::new(),
+            }))
+        );
+    }
+
+    #[test]
+    fn sessions_new_command_parses_like_new() {
+        assert_eq!(
+            parse_mobile_text("cmux sessions new --id main /tmp/project codex", false),
+            ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: Some(SessionId("main".to_owned())),
+                workspace: Some(PathBuf::from("/tmp/project")),
+                provider: Some(ProviderKind::Codex),
+                extra_args: Vec::new(),
+            }))
+        );
+        assert_eq!(
+            parse_mobile_text("cmux s n --id main /tmp/project codex", false),
+            ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: Some(SessionId("main".to_owned())),
+                workspace: Some(PathBuf::from("/tmp/project")),
+                provider: Some(ProviderKind::Codex),
+                extra_args: Vec::new(),
+            }))
+        );
+    }
+
+    #[test]
+    fn short_aliases_parse_to_mobile_commands() {
+        assert_eq!(
+            parse_mobile_text("cmux n /tmp/project codex", false),
+            ParsedInbound::BridgeCommand(MobileCommand::New(NewSessionArgs {
+                id: None,
+                workspace: Some(PathBuf::from("/tmp/project")),
+                provider: Some(ProviderKind::Codex),
+                extra_args: Vec::new(),
+            }))
+        );
+        assert_eq!(
+            parse_mobile_text("cmux ss", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
+        );
+        assert_eq!(
+            parse_mobile_text("cmux i", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Interrupt)
+        );
+        assert_eq!(
+            parse_mobile_text("cmux e", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Enter)
+        );
+    }
+
+    #[test]
     fn provider_command_accepts_provider_name() {
         assert_eq!(
             parse_mobile_text("cmux provider codex", false),
@@ -294,6 +381,10 @@ mod tests {
             parse_mobile_text("cmux sessions list", false),
             ParsedInbound::BridgeCommand(MobileCommand::Sessions)
         );
+        assert_eq!(
+            parse_mobile_text("cmux list", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Sessions)
+        );
     }
 
     #[test]
@@ -301,6 +392,18 @@ mod tests {
         assert_eq!(
             parse_mobile_text("cmux prune", false),
             ParsedInbound::BridgeCommand(MobileCommand::Prune)
+        );
+    }
+
+    #[test]
+    fn capture_aliases_parse_to_screenshot() {
+        assert_eq!(
+            parse_mobile_text("cmux cap", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
+        );
+        assert_eq!(
+            parse_mobile_text("cmux sessions capture", false),
+            ParsedInbound::BridgeCommand(MobileCommand::Screenshot)
         );
     }
 
