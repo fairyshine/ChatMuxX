@@ -80,42 +80,26 @@ codex --version
 
 普通微信文字会发送给 Codex。以 `cmx` 开头的是 ChatMuxX 控制命令。
 
-## 常用微信命令
-
-```text
-cmx h                         帮助
-cmx n <项目路径> codex        新建 Codex 会话
-cmx ls                        查看会话
-cmx sw <session-id>           切换会话
-cmx mv <new-id>               重命名当前会话
-cmx ss                        查看当前终端文本
-cmx i                         中断当前任务，等同 Ctrl-C
-cmx e                         发送 Enter
-cmx esc                       发送 Esc
-cmx rm                        关闭当前会话
-```
-
 Provider 自己的 `/...` 命令会直接发给 Codex 或 Claude，不会被 ChatMuxX 拦截。
 
-## 本地命令
+## 常用命令
 
-不经过微信也可以直接测试：
+微信命令不写 session id 时，会默认操作当前绑定会话。本地 CLI 命令通常需要写 session id。
 
-```bash
-cmx n --id test /tmp shell
-cmx ls
-cmx p test "echo hello" --enter
-cmx cap test
-cmx rm test
-```
-
-本地控制命令通常需要写 session id，例如：
-
-```bash
-cmx i main
-cmx e main
-cmx esc main
-```
+| 用途 | 微信缩写 | 微信全写 | 本地 CLI |
+| --- | --- | --- | --- |
+| 帮助 | `cmx h` | `cmx help` | `cmx help` |
+| 新建 Codex 会话 | `cmx n --id main /路径 codex` | `cmx new --id main /路径 codex` | `cmx n --id main /路径 codex` |
+| 查看会话 | `cmx ls` | `cmx list` / `cmx sessions list` | `cmx ls` / `cmx list` |
+| 切换会话 | `cmx sw main` | `cmx switch main` | 本地命令里直接写 session id |
+| 重命名会话 | `cmx mv main2` | `cmx rename main2` | `cmx mv main main2` / `cmx rename main main2` |
+| 查看终端文本 | `cmx ss` | `cmx screenshot` / `cmx capture` | `cmx ss main` / `cmx capture main` |
+| 发送文本 | 普通消息 | 普通消息 | `cmx p main "echo hello" --enter` / `cmx send main "echo hello" --enter` |
+| 中断任务 | `cmx i` | `cmx interrupt` | `cmx i main` / `cmx interrupt main` |
+| 发送 Enter | `cmx e` | `cmx enter` | `cmx e main` / `cmx enter main` |
+| 发送 Esc | `cmx esc` | `cmx esc` | `cmx esc main` |
+| 关闭会话 | `cmx rm` | `cmx close` | `cmx rm main` / `cmx close main` |
+| 清理 closed/dead 会话 | `cmx clean` | `cmx prune` | `cmx clean` / `cmx prune` |
 
 ## 更新
 

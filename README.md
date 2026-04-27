@@ -80,42 +80,26 @@ codex --version
 
 Normal WeChat text goes to Codex. Text starting with `cmx` controls ChatMuxX.
 
-## WeChat Commands
-
-```text
-cmx h                         help
-cmx n <project-path> codex     create a Codex session
-cmx ls                        list sessions
-cmx sw <session-id>           switch session
-cmx mv <new-id>               rename current session
-cmx ss                        show current terminal text
-cmx i                         interrupt current task, like Ctrl-C
-cmx e                         send Enter
-cmx esc                       send Esc
-cmx rm                        close current session
-```
-
 Provider-native `/...` commands are forwarded to Codex or Claude. ChatMuxX does not use `/` commands.
 
-## Local Commands
+## Commands
 
-You can test without WeChat:
+WeChat commands act on the current bound session when no session id is given. Local commands usually need a session id.
 
-```bash
-cmx n --id test /tmp shell
-cmx ls
-cmx p test "echo hello" --enter
-cmx cap test
-cmx rm test
-```
-
-Local pane-control commands usually need a session id:
-
-```bash
-cmx i main
-cmx e main
-cmx esc main
-```
+| Action | WeChat short | WeChat full | Local CLI |
+| --- | --- | --- | --- |
+| Help | `cmx h` | `cmx help` | `cmx help` |
+| Create Codex session | `cmx n --id main /path codex` | `cmx new --id main /path codex` | `cmx n --id main /path codex` |
+| List sessions | `cmx ls` | `cmx list` / `cmx sessions list` | `cmx ls` / `cmx list` |
+| Switch session | `cmx sw main` | `cmx switch main` | use the session id in local commands |
+| Rename session | `cmx mv main2` | `cmx rename main2` | `cmx mv main main2` / `cmx rename main main2` |
+| Show terminal text | `cmx ss` | `cmx screenshot` / `cmx capture` | `cmx ss main` / `cmx capture main` |
+| Send text | normal message | normal message | `cmx p main "echo hello" --enter` / `cmx send main "echo hello" --enter` |
+| Interrupt | `cmx i` | `cmx interrupt` | `cmx i main` / `cmx interrupt main` |
+| Enter | `cmx e` | `cmx enter` | `cmx e main` / `cmx enter main` |
+| Escape | `cmx esc` | `cmx esc` | `cmx esc main` |
+| Close session | `cmx rm` | `cmx close` | `cmx rm main` / `cmx close main` |
+| Clean closed/dead sessions | `cmx clean` | `cmx prune` | `cmx clean` / `cmx prune` |
 
 ## Update
 
