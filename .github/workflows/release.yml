@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, for example v0.0.1-dev1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,9 +21,28 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) tag="v$tag" ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -27,7 +52,8 @@ jobs:
         run: |
           set -euo pipefail
           version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(pkg["version"] for pkg in data["packages"] if pkg["name"] == "cmx"))')"
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${{ steps.release.outputs.tag }}"
+          tag="${tag#v}"
           if [ "$version" != "$tag" ]; then
             echo "Release tag v$tag does not match Cargo version $version" >&2
             exit 1
@@ -74,6 +100,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -142,7 +170,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="${{ needs.verify.outputs.tag }}"
           prerelease="${{ needs.verify.outputs.prerelease }}"
           release_flags=""
           if [ "$prerelease" = "true" ]; then

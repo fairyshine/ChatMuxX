@@ -51,6 +51,7 @@ Tag `v0.0.1-dev` requires Cargo version `0.0.1-dev`.
 
 - `.github/workflows/ci.yml` runs formatting, tests, and clippy on `master` and pull requests.
 - `.github/workflows/release.yml` runs when a `v*` tag is pushed, then verifies that the tag matches the Cargo version.
+- `.github/workflows/release.yml` can also be run manually with `workflow_dispatch` for an existing tag, such as `v0.0.1-dev1`, to rebuild and upload release assets.
 - Versions containing `-`, such as `0.0.1-dev`, are published as GitHub prereleases.
 - The release workflow builds `cmx` archives for Linux x86_64, Linux aarch64, macOS x86_64, macOS arm64, Windows x86_64, and Windows aarch64.
 - The release workflow uploads `.tar.gz` archives and `.sha256` checksum files to the GitHub release.
