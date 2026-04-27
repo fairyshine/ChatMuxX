@@ -84,22 +84,22 @@ Provider-native `/...` commands are forwarded to Codex or Claude. ChatMuxX does 
 
 ## Commands
 
-WeChat commands act on the current bound session when no session id is given. Local commands usually need a session id.
+WeChat commands act on the current bound session when no session id is given. Local CLI commands usually need a session id for pane actions.
 
-| Action | WeChat short | WeChat full | Local CLI |
-| --- | --- | --- | --- |
-| Help | `cmx h` | `cmx help` | `cmx help` |
-| Create Codex session | `cmx n --id main /path codex` | `cmx new --id main /path codex` | `cmx n --id main /path codex` |
-| List sessions | `cmx ls` | `cmx list` / `cmx sessions list` | `cmx ls` / `cmx list` |
-| Switch session | `cmx sw main` | `cmx switch main` | use the session id in local commands |
-| Rename session | `cmx mv main2` | `cmx rename main2` | `cmx mv main main2` / `cmx rename main main2` |
-| Show terminal text | `cmx ss` | `cmx screenshot` / `cmx capture` | `cmx ss main` / `cmx capture main` |
-| Send text | normal message | normal message | `cmx p main "echo hello" --enter` / `cmx send main "echo hello" --enter` |
-| Interrupt | `cmx i` | `cmx interrupt` | `cmx i main` / `cmx interrupt main` |
-| Enter | `cmx e` | `cmx enter` | `cmx e main` / `cmx enter main` |
-| Escape | `cmx esc` | `cmx esc` | `cmx esc main` |
-| Close session | `cmx rm` | `cmx close` | `cmx rm main` / `cmx close main` |
-| Clean closed/dead sessions | `cmx clean` | `cmx prune` | `cmx clean` / `cmx prune` |
+| Action | Short | Full |
+| --- | --- | --- |
+| Help | `cmx h` | `cmx help` |
+| Create Codex session | `cmx n --id main /path codex` | `cmx new --id main /path codex` |
+| List sessions | `cmx ls` | `cmx list` / `cmx sessions list` |
+| Switch session | `cmx sw main` | `cmx switch main` |
+| Rename session | WeChat: `cmx mv main2`<br>Local: `cmx mv main main2` | WeChat: `cmx rename main2`<br>Local: `cmx rename main main2` |
+| Show terminal text | WeChat: `cmx ss`<br>Local: `cmx ss main` | WeChat: `cmx screenshot`<br>Local: `cmx capture main` |
+| Send text | WeChat: normal message<br>Local: `cmx p main "echo hello" --enter` | WeChat: normal message<br>Local: `cmx send main "echo hello" --enter` |
+| Interrupt | WeChat: `cmx i`<br>Local: `cmx i main` | WeChat: `cmx interrupt`<br>Local: `cmx interrupt main` |
+| Enter | WeChat: `cmx e`<br>Local: `cmx e main` | WeChat: `cmx enter`<br>Local: `cmx enter main` |
+| Escape | WeChat: `cmx esc`<br>Local: `cmx esc main` | `cmx esc` |
+| Close session | WeChat: `cmx rm`<br>Local: `cmx rm main` | WeChat: `cmx close`<br>Local: `cmx close main` |
+| Clean closed/dead sessions | `cmx clean` | `cmx prune` |
 
 ## Update
 
