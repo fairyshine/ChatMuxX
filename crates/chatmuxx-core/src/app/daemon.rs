@@ -556,6 +556,13 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
         if pane_changed {
             let previous_text = previous_monitor.and_then(|state| state.last_pane_text.as_deref());
             let footer_text = extract_terminal_footer(&pane, session.provider);
+            if let Some(footer) = footer_text.as_deref().and_then(normalize_footer) {
+                next_monitor.last_footer_text = Some(footer);
+            }
+            next_monitor.last_status_text = footer_text
+                .as_deref()
+                .and_then(|footer| extract_footer_value(footer, "状态"))
+                .or(next_monitor.last_status_text);
             if let Some(raw_delta) = raw_pane_delta(previous_text, &pane) {
                 append_history(
                     &paths.history,
@@ -577,10 +584,6 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
                 if footer_text.is_some() {
                     next_monitor.pending_footer_text = footer_text.clone();
                 }
-                next_monitor.last_status_text = footer_text
-                    .as_deref()
-                    .and_then(|footer| extract_footer_value(footer, "状态"))
-                    .or(next_monitor.last_status_text);
             }
         }
 
@@ -1489,6 +1492,7 @@ fn is_noisy_claude_ui_line(line: &str) -> bool {
         || lower.contains("no recent activity")
         || lower.contains("api usage billing")
         || lower.contains("/effort")
+        || lower == "esc to cancel"
         || (cleaned.starts_with("~/") && !cleaned.chars().any(char::is_whitespace))
         || cleaned
             .chars()
@@ -1723,6 +1727,19 @@ mod tests {
         );
 
         assert_eq!(text, "");
+    }
+
+    #[test]
+    fn claude_pane_normalization_keeps_help_body_without_modal_chrome() {
+        let text = normalize_pane_text(
+            "❯ /help\n────────────────────────\nClaude Code v2.1.119 general commands custom-commands\nClaude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode\nEsc to cancel",
+            ProviderKind::Claude,
+        );
+
+        assert_eq!(
+            text,
+            "Claude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode"
+        );
     }
 
     #[test]
