@@ -1,7 +1,10 @@
 use super::{
-    clean_footer_line, clean_selected_option_or_line, contains_prompt_marker, is_mostly_ui_symbols,
-    looks_like_ascii_status_label, normalize_agent_pane_text, split_inline_separators,
-    strip_standalone_prompt_markers,
+    footer::clean_footer_line,
+    normalize::{
+        clean_selected_option_or_line, contains_prompt_marker, is_mostly_ui_symbols,
+        looks_like_ascii_status_label, normalize_agent_pane_text, split_inline_separators,
+        strip_standalone_prompt_markers,
+    },
 };
 
 pub(super) fn normalize_pane_text(text: &str) -> String {

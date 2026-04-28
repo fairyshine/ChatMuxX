@@ -70,6 +70,8 @@ Explain how this repo starts
 
 Codex runs on your computer. The answer comes back to WeChat.
 
+To stop a running task from WeChat, send `cmx i`, then reply `yes` to confirm. To close the current session, send `cmx rm`, then reply `yes` to confirm.
+
 ## Requirements
 
 Check local tools:
@@ -87,6 +89,8 @@ Provider-native `/...` commands are forwarded to Codex or Claude. ChatMuxX does 
 ## Commands
 
 WeChat commands act on the current bound session when no session id is given. Local CLI commands usually need a session id for pane actions.
+
+From WeChat, risky actions such as `cmx i` and `cmx rm` ask for confirmation first. Reply `yes` to continue or `no` to cancel.
 
 | Action | Short | Full |
 | --- | --- | --- |

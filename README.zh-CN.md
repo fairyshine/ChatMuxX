@@ -69,6 +69,8 @@ cmx n --id main /Users/you/Code/your-project codex
 
 Codex 会在你的电脑上运行，回复会发回微信。
 
+如果要从微信中断当前任务，发送 `cmx i`，再回复 `yes` 确认。如果要关闭当前会话，发送 `cmx rm`，再回复 `yes` 确认。
+
 ## 需要提前准备
 
 检查本地工具：
@@ -85,6 +87,8 @@ Provider 自己的 `/...` 命令会直接发给 Codex 或 Claude，不会被 Cha
 ## 常用命令
 
 微信命令不写 session id 时，会默认操作当前绑定会话。本地 CLI 的终端控制命令通常需要写 session id。
+
+微信里的危险操作会先二次确认，例如 `cmx i` 和 `cmx rm`。回复 `yes` 继续，回复 `no` 取消。
 
 | 用途 | 缩写 | 全写 |
 | --- | --- | --- |

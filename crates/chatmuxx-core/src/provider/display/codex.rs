@@ -1,4 +1,4 @@
-use super::{
+use super::normalize::{
     clean_selected_option_or_line, clean_status_line, contains_control_hint,
     contains_prompt_marker, is_spinner_status_line, looks_like_ascii_status_label,
     looks_like_numbered_option, normalize_agent_pane_text, split_inline_separators,
