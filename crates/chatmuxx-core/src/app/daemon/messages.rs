@@ -5,68 +5,75 @@ pub(super) const WECHAT_ACCOUNT_MISSING: &str =
     "No WeChat account found. Run `cmx login wechat` first.";
 pub(super) const DAEMON_STARTING: &str = "Starting ChatMuxX daemon. Press Ctrl-C to stop.";
 pub(super) const DAEMON_STOPPING: &str = "Stopping ChatMuxX daemon.";
-pub(super) const UNAUTHORIZED: &str = "未授权用户不能使用 ChatMuxX。";
-pub(super) const NO_BOUND_SESSION: &str = "还没有绑定的会话。发送 `cmx n /你的项目路径 claude` 创建 Claude 会话，或把 `claude` 换成 `codex` / `shell`。";
+pub(super) const UNAUTHORIZED: &str = "This WeChat user is not authorized to use ChatMuxX.";
+pub(super) const NO_BOUND_SESSION: &str = "No session is bound to this chat yet. Send `cmx n /your/project/path claude` to create a Claude session, or use `codex` / `shell` instead.";
 pub(super) const USAGE_NEW: &str =
-    "用法：`cmx n --id main /项目路径 claude`，provider 也可以是 `codex` 或 `shell`。";
+    "Usage: `cmx n --id main /your/project/path claude`; provider can also be `codex` or `shell`.";
 pub(super) const NEW_ID_POSITION: &str =
-    "项目路径解析失败：`--id` 要放在 `cmx n` 后面，示例：`cmx n --id main /项目路径 claude`。";
-pub(super) const USAGE_SWITCH: &str = "用法：`cmx sw <session-id>`";
-pub(super) const USAGE_RENAME: &str = "用法：`cmx mv [session-id] <new-id>`";
-pub(super) const NO_ACTIVE_SESSION: &str = "没有活动会话。";
-pub(super) const NO_ACTIVE_TO_CLOSE: &str = "没有可关闭的活动会话。";
-pub(super) const NO_ACTIVE_TO_RENAME: &str = "没有可重命名的活动会话。";
-pub(super) const PROVIDER_SWITCH_NOT_SUPPORTED: &str = "切换 provider 请先用 `cmx rm` 关闭当前会话，再用 `cmx n /路径 claude` 或 `cmx n /路径 codex` 创建。";
-pub(super) const RECOVER_NOT_SUPPORTED: &str = "恢复会话稍后支持。";
-pub(super) const CONFIRM_EXPIRED_OR_MISSING: &str = "没有待确认操作，或确认已过期。";
-pub(super) const CONFIRM_CANCELLED: &str = "已取消。";
-pub(super) const SESSION_LIST_EMPTY: &str = "会话列表：没有会话。";
-pub(super) const SESSION_MARKER_CURRENT: &str = "当前 ";
-pub(super) const SESSION_MARKER_ACTIVE: &str = "活动 ";
-pub(super) const HELP: &str = "ChatMuxX 命令：\ncmx n --id main /项目路径 claude\ncmx n --id codex /项目路径 codex\ncmx n --id sh /项目路径 shell\ncmx ls\ncmx sw <session-id>\ncmx mv [session-id] <new-id>\ncmx ss\ncmx rm\ncmx prune\n普通文字会发送给当前会话。";
+    "Invalid workspace: put `--id` after `cmx n`, for example `cmx n --id main /your/project/path claude`.";
+pub(super) const USAGE_SWITCH: &str = "Usage: `cmx sw <session-id>`";
+pub(super) const USAGE_RENAME: &str = "Usage: `cmx mv [session-id] <new-id>`";
+pub(super) const NO_ACTIVE_SESSION: &str = "No active session.";
+pub(super) const NO_ACTIVE_TO_CLOSE: &str = "No active session to close.";
+pub(super) const NO_ACTIVE_TO_RENAME: &str = "No active session to rename.";
+pub(super) const PROVIDER_SWITCH_NOT_SUPPORTED: &str = "Provider switching is not supported in-place yet. Close the current session with `cmx rm`, then create a new one with `cmx n /path claude` or `cmx n /path codex`.";
+pub(super) const RECOVER_NOT_SUPPORTED: &str = "Session recovery is not supported yet.";
+pub(super) const CONFIRM_EXPIRED_OR_MISSING: &str =
+    "There is no pending confirmation, or it has expired.";
+pub(super) const CONFIRM_CANCELLED: &str = "Cancelled.";
+pub(super) const SESSION_LIST_EMPTY: &str = "Sessions: none.";
+pub(super) const SESSION_MARKER_CURRENT: &str = "current ";
+pub(super) const SESSION_MARKER_ACTIVE: &str = "active ";
+pub(super) const HELP: &str = "ChatMuxX commands:\ncmx n --id main /project/path claude\ncmx n --id codex /project/path codex\ncmx n --id sh /project/path shell\ncmx ls\ncmx sw <session-id>\ncmx mv [session-id] <new-id>\ncmx ss\ncmx rm\ncmx prune\nPlain text is sent to the current session.";
 
 pub(super) fn flow_not_active(text: &str) -> String {
-    format!("暂未进入交互流程，收到：{text}")
+    format!("No interactive flow is active. Received: {text}")
 }
 
 pub(super) fn session_created(provider: ProviderKind, session_id: &SessionId) -> String {
-    format!("已创建 {provider} 会话：{}", session_id.0)
+    format!("Created {provider} session: {}", session_id.0)
 }
 
 pub(super) fn session_switched(session_id: &SessionId) -> String {
-    format!("已切换到：{}", session_id.0)
+    format!("Switched to session: {}", session_id.0)
 }
 
 pub(super) fn session_closed(session_id: &SessionId) -> String {
-    format!("已关闭并清理：{}", session_id.0)
+    format!("Closed and cleaned up session: {}", session_id.0)
 }
 
 pub(super) fn confirm_close(session_id: &SessionId) -> String {
-    format!("确认关闭会话 `{}`？回复 `yes` 确认，回复 `no` 取消。", session_id.0)
+    format!(
+        "Close session `{}`? Reply `yes` to confirm, or `no` to cancel.",
+        session_id.0
+    )
 }
 
 pub(super) fn confirm_interrupt(session_id: &SessionId) -> String {
-    format!("确认中断会话 `{}`？回复 `yes` 确认，回复 `no` 取消。", session_id.0)
+    format!(
+        "Interrupt session `{}`? Reply `yes` to confirm, or `no` to cancel.",
+        session_id.0
+    )
 }
 
 pub(super) fn session_interrupted(session_id: &SessionId) -> String {
-    format!("已中断：{}", session_id.0)
+    format!("Interrupted session: {}", session_id.0)
 }
 
 pub(super) fn session_renamed(session_id: &SessionId) -> String {
-    format!("已重命名会话：{}", session_id.0)
+    format!("Renamed session: {}", session_id.0)
 }
 
 pub(super) fn sessions_pruned(removed_sessions: usize, removed_bindings: usize) -> String {
-    format!("已清理 {removed_sessions} 个 Dead/Closed 会话，{removed_bindings} 条绑定记录。")
+    format!("Pruned {removed_sessions} Dead/Closed sessions and {removed_bindings} bindings.")
 }
 
 pub(super) fn unknown_command(name: &str) -> String {
-    format!("未知 cmx 命令：{name}")
+    format!("Unknown cmx command: {name}")
 }
 
 pub(super) fn session_list_header(count: usize) -> String {
-    format!("会话列表：{count} 个")
+    format!("Sessions: {count}")
 }
 
 pub(super) fn session_list_item(session: &SessionSummary, marker: &str) -> String {

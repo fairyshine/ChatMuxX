@@ -1,7 +1,7 @@
 use crate::{
     app::daemon::{
-        active_session_id, bind_conversation, confirm_interrupt_active, format_session_list, help_text,
-        messages, now_millis, set_confirmation, send_key_to_active, wechat,
+        active_session_id, bind_conversation, confirm_interrupt_active, format_session_list,
+        help_text, messages, now_millis, send_key_to_active, set_confirmation, wechat,
         workspace_looks_like_option, InboundWeChatText,
     },
     mobile::MobileCommand,

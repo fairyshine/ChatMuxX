@@ -35,7 +35,9 @@ mod state;
 mod text;
 mod wechat;
 
-use state::{active_session_id, bind_conversation, is_authorized, set_confirmation, take_confirmation};
+use state::{
+    active_session_id, bind_conversation, is_authorized, set_confirmation, take_confirmation,
+};
 use text::{merge_pending_text, should_flush_pending, text_delta};
 
 #[derive(Clone, Debug)]
@@ -106,7 +108,12 @@ async fn handle_wechat_text(
     event: InboundWeChatText,
 ) -> Result<()> {
     if !is_authorized(paths, config, &event.from_user_id).await? {
-        wechat::send_reply(paths, &event.account_id, &event.conversation_id, messages::UNAUTHORIZED)
+        wechat::send_reply(
+            paths,
+            &event.account_id,
+            &event.conversation_id,
+            messages::UNAUTHORIZED,
+        )
         .await?;
         return Ok(());
     }
@@ -122,7 +129,12 @@ async fn handle_wechat_text(
             if let Some(session_id) = active_session_id(paths, &event.conversation_id).await? {
                 manager.send_text_and_enter(&session_id, &text).await?;
             } else {
-                wechat::send_reply(paths, &event.account_id, &event.conversation_id, messages::NO_BOUND_SESSION)
+                wechat::send_reply(
+                    paths,
+                    &event.account_id,
+                    &event.conversation_id,
+                    messages::NO_BOUND_SESSION,
+                )
                 .await?;
             }
         }
@@ -142,7 +154,6 @@ async fn handle_wechat_text(
 
     Ok(())
 }
-
 
 pub(super) fn workspace_looks_like_option(workspace: &Path) -> bool {
     workspace
@@ -346,7 +357,7 @@ async fn monitor_sessions(paths: &StatePaths, manager: &SessionManager) -> Resul
             }
             next_monitor.last_status_text = footer_text
                 .as_deref()
-                .and_then(|footer| extract_footer_value(footer, "状态"))
+                .and_then(|footer| extract_footer_value(footer, "Status"))
                 .or(next_monitor.last_status_text);
             if let Some(raw_delta) = raw_pane_delta(previous_text, &pane) {
                 append_history(
@@ -530,7 +541,7 @@ mod tests {
 
         assert_eq!(
             text,
-            "会话列表：1 个\n- 当前 sess-1 · codex · Running\n  /tmp/project"
+            "Sessions: 1\n- current sess-1 · codex · Running\n  /tmp/project"
         );
     }
 
@@ -550,7 +561,7 @@ mod tests {
 
         assert_eq!(
             text,
-            "会话列表：1 个\n- 活动 sess-1 · codex · Running\n  /tmp/project"
+            "Sessions: 1\n- active sess-1 · codex · Running\n  /tmp/project"
         );
     }
 
@@ -562,6 +573,4 @@ mod tests {
         assert_eq!(parse_confirmation_decision("取消"), Some(false));
         assert_eq!(parse_confirmation_decision("hello"), None);
     }
-
-
 }
