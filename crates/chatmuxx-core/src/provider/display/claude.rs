@@ -145,12 +145,7 @@ fn is_claude_noise_line(line: &str) -> bool {
 fn looks_like_version_title_line(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     let has_version = lower.split_whitespace().any(|token| {
-        token.starts_with('v')
-            && token
-                .chars()
-                .skip(1)
-                .next()
-                .is_some_and(|ch| ch.is_ascii_digit())
+        token.starts_with('v') && token.chars().nth(1).is_some_and(|ch| ch.is_ascii_digit())
     });
     let has_title_word = lower
         .split_whitespace()

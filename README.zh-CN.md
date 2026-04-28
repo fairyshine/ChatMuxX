@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark-256.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light-256.png">
+    <img alt="ChatMuxX logo" src="assets/logo-light-256.png" width="120">
+  </picture>
+</p>
+
 # ChatMuxX
 
 [English](README.md) | 简体中文

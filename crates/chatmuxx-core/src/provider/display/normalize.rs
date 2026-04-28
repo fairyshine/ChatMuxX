@@ -79,7 +79,7 @@ pub(super) fn is_spinner_status_line(line: &str) -> bool {
 pub(super) fn clean_status_line(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let without_spinner = trimmed
-        .strip_prefix(|ch| is_braille_spinner_char(ch))
+        .strip_prefix(is_braille_spinner_char)
         .unwrap_or(trimmed)
         .trim();
     if without_spinner.is_empty() {
