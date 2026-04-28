@@ -547,6 +547,7 @@ mod tests {
                 },
             ],
             conversations: Vec::new(),
+            confirmations: Vec::new(),
         };
 
         let result = remove_session_records(&mut state, &HashSet::from([remove_id]));
@@ -580,6 +581,7 @@ mod tests {
             }],
             bindings: Vec::new(),
             conversations: Vec::new(),
+            confirmations: Vec::new(),
         };
 
         let id = resolve_session_id_in_state(&state, &SessionId("main".to_owned())).unwrap();
@@ -616,6 +618,7 @@ mod tests {
             ],
             bindings: Vec::new(),
             conversations: Vec::new(),
+            confirmations: Vec::new(),
         };
 
         assert!(matches!(

@@ -11,6 +11,8 @@ pub struct AppState {
     pub sessions: Vec<SessionRecord>,
     pub bindings: Vec<BindingRecord>,
     pub conversations: Vec<ConversationRecord>,
+    #[serde(default)]
+    pub confirmations: Vec<ConfirmationRecord>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -114,6 +116,19 @@ pub enum ChannelType {
 pub enum ConversationKind {
     Direct,
     Group,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConfirmationRecord {
+    pub conversation_id: String,
+    pub action: ConfirmationAction,
+    pub created_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum ConfirmationAction {
+    CloseSession { session_id: SessionId },
+    InterruptSession { session_id: SessionId },
 }
 
 #[cfg(test)]

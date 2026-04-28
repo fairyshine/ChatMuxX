@@ -18,6 +18,8 @@ pub(super) const NO_ACTIVE_TO_CLOSE: &str = "没有可关闭的活动会话。";
 pub(super) const NO_ACTIVE_TO_RENAME: &str = "没有可重命名的活动会话。";
 pub(super) const PROVIDER_SWITCH_NOT_SUPPORTED: &str = "切换 provider 请先用 `cmx rm` 关闭当前会话，再用 `cmx n /路径 claude` 或 `cmx n /路径 codex` 创建。";
 pub(super) const RECOVER_NOT_SUPPORTED: &str = "恢复会话稍后支持。";
+pub(super) const CONFIRM_EXPIRED_OR_MISSING: &str = "没有待确认操作，或确认已过期。";
+pub(super) const CONFIRM_CANCELLED: &str = "已取消。";
 pub(super) const SESSION_LIST_EMPTY: &str = "会话列表：没有会话。";
 pub(super) const SESSION_MARKER_CURRENT: &str = "当前 ";
 pub(super) const SESSION_MARKER_ACTIVE: &str = "活动 ";
@@ -37,6 +39,18 @@ pub(super) fn session_switched(session_id: &SessionId) -> String {
 
 pub(super) fn session_closed(session_id: &SessionId) -> String {
     format!("已关闭并清理：{}", session_id.0)
+}
+
+pub(super) fn confirm_close(session_id: &SessionId) -> String {
+    format!("确认关闭会话 `{}`？回复 `yes` 确认，回复 `no` 取消。", session_id.0)
+}
+
+pub(super) fn confirm_interrupt(session_id: &SessionId) -> String {
+    format!("确认中断会话 `{}`？回复 `yes` 确认，回复 `no` 取消。", session_id.0)
+}
+
+pub(super) fn session_interrupted(session_id: &SessionId) -> String {
+    format!("已中断：{}", session_id.0)
 }
 
 pub(super) fn session_renamed(session_id: &SessionId) -> String {

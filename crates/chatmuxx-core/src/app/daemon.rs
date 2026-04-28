@@ -7,43 +7,46 @@ use std::{
 
 use crate::{
     config::{default_config_path, load_config, Config},
-    mobile::{parse_mobile_text, MobileCommand, ParsedInbound},
+    mobile::{parse_mobile_text, ParsedInbound},
     provider::{
         display::{
             extract_footer_value, extract_terminal_footer, footer_for_display,
             format_display_message, normalize_footer, normalize_pane_text, normalize_raw_pane_text,
             trim_for_chat,
         },
-        LaunchMode, ProviderKind,
+        ProviderKind,
     },
-    session::{CloseReason, CreateSessionRequest, SessionManager, SessionSummary},
+    session::{CloseReason, SessionManager, SessionSummary},
     state::{
         accounts::AccountState,
         atomic::{load_json_or_default, save_json},
         files::{ensure_state_dir, StatePaths},
         history::{append_history, HistoryEvent},
         monitor::{MonitorSessionState, MonitorSourceState, MonitorState},
-        sessions::{AppState, OwnerId, SessionId, SessionStatus},
+        sessions::{AppState, ConfirmationAction, SessionId, SessionStatus},
     },
     tmux::TmuxKey,
     ChatMuxXError, Result,
 };
 
+mod commands;
 mod messages;
 mod state;
 mod text;
 mod wechat;
 
-use state::{active_session_id, bind_conversation, is_authorized};
+use state::{active_session_id, bind_conversation, is_authorized, set_confirmation, take_confirmation};
 use text::{merge_pending_text, should_flush_pending, text_delta};
 
 #[derive(Clone, Debug)]
-struct InboundWeChatText {
+pub(super) struct InboundWeChatText {
     account_id: String,
     conversation_id: String,
     from_user_id: String,
     text: String,
 }
+
+const CONFIRMATION_TTL_MS: u64 = 60_000;
 
 pub async fn run(config_path: Option<PathBuf>) -> Result<()> {
     let paths = StatePaths::from_default_root()?;
@@ -110,9 +113,12 @@ async fn handle_wechat_text(
 
     match parse_mobile_text(&event.text, false) {
         ParsedInbound::BridgeCommand(command) => {
-            handle_bridge_command(paths, manager, &event, command).await?;
+            commands::handle_bridge_command(paths, manager, &event, command).await?;
         }
         ParsedInbound::ProviderSlashCommand(text) | ParsedInbound::PlainText(text) => {
+            if handle_confirmation_reply(paths, manager, &event, &text).await? {
+                return Ok(());
+            }
             if let Some(session_id) = active_session_id(paths, &event.conversation_id).await? {
                 manager.send_text_and_enter(&session_id, &text).await?;
             } else {
@@ -121,6 +127,9 @@ async fn handle_wechat_text(
             }
         }
         ParsedInbound::FlowReply(text) => {
+            if handle_confirmation_reply(paths, manager, &event, &text).await? {
+                return Ok(());
+            }
             wechat::send_reply(
                 paths,
                 &event.account_id,
@@ -134,103 +143,55 @@ async fn handle_wechat_text(
     Ok(())
 }
 
-async fn handle_bridge_command(
+
+pub(super) fn workspace_looks_like_option(workspace: &Path) -> bool {
+    workspace
+        .as_os_str()
+        .to_str()
+        .is_some_and(|value| value.starts_with('-'))
+}
+
+async fn handle_confirmation_reply(
     paths: &StatePaths,
     manager: &SessionManager,
     event: &InboundWeChatText,
-    command: MobileCommand,
-) -> Result<()> {
-    match command {
-        MobileCommand::Help => {
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                help_text(),
-            )
-            .await?;
-        }
-        MobileCommand::New(args) => {
-            let Some(workspace) = args.workspace else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::USAGE_NEW,
-                )
-                .await?;
-                return Ok(());
-            };
-            if workspace_looks_like_option(&workspace) {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::NEW_ID_POSITION,
-                )
-                .await?;
-                return Ok(());
-            }
-            let provider = args.provider.unwrap_or(ProviderKind::Codex);
-            let session = manager
-                .create_session(CreateSessionRequest {
-                    id: args.id,
-                    provider,
-                    workspace,
-                    launch_mode: LaunchMode::Fresh,
-                    extra_args: args.extra_args,
-                    owner: OwnerId("owner-local".to_owned()),
-                    conversation: Some(event.conversation_id.clone()),
-                })
-                .await?;
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                &messages::session_created(provider, &session.id),
-            )
-            .await?;
-        }
-        MobileCommand::Sessions => {
-            let sessions = manager.list_sessions().await?;
-            let current_session_id = active_session_id(paths, &event.conversation_id).await?;
-            let text = format_session_list(&sessions, current_session_id.as_ref());
-            wechat::send_reply(paths, &event.account_id, &event.conversation_id, &text).await?;
-        }
-        MobileCommand::Switch { session_id } => {
-            let Some(session_id) = session_id else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::USAGE_SWITCH,
-                )
-                .await?;
-                return Ok(());
-            };
-            let session_id = manager.resolve_session_id(&session_id).await?;
-            bind_conversation(paths, &event.conversation_id, &session_id).await?;
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                &messages::session_switched(&session_id),
-            )
-            .await?;
-        }
-        MobileCommand::Close { session_id } => {
-            let Some(session_id) =
-                session_id.or(active_session_id(paths, &event.conversation_id).await?)
-            else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::NO_ACTIVE_TO_CLOSE,
-                )
-                .await?;
-                return Ok(());
-            };
+    text: &str,
+) -> Result<bool> {
+    let decision = match parse_confirmation_decision(text) {
+        Some(decision) => decision,
+        None => return Ok(false),
+    };
+    let Some(action) = take_confirmation(
+        paths,
+        &event.conversation_id,
+        now_millis(),
+        CONFIRMATION_TTL_MS,
+    )
+    .await?
+    else {
+        wechat::send_reply(
+            paths,
+            &event.account_id,
+            &event.conversation_id,
+            messages::CONFIRM_EXPIRED_OR_MISSING,
+        )
+        .await?;
+        return Ok(true);
+    };
+
+    if !decision {
+        wechat::send_reply(
+            paths,
+            &event.account_id,
+            &event.conversation_id,
+            messages::CONFIRM_CANCELLED,
+        )
+        .await?;
+        return Ok(true);
+    }
+
+    match action {
+        ConfirmationAction::CloseSession { session_id } => {
             manager
                 .close_session(&session_id, CloseReason::UserRequested)
                 .await?;
@@ -242,112 +203,64 @@ async fn handle_bridge_command(
             )
             .await?;
         }
-        MobileCommand::Rename { session_id, new_id } => {
-            let Some(new_id) = new_id else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::USAGE_RENAME,
-                )
-                .await?;
-                return Ok(());
-            };
-            let Some(session_id) =
-                session_id.or(active_session_id(paths, &event.conversation_id).await?)
-            else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::NO_ACTIVE_TO_RENAME,
-                )
-                .await?;
-                return Ok(());
-            };
-            let record = manager.rename_session(&session_id, new_id).await?;
+        ConfirmationAction::InterruptSession { session_id } => {
+            manager.send_key(&session_id, TmuxKey::CtrlC).await?;
             wechat::send_reply(
                 paths,
                 &event.account_id,
                 &event.conversation_id,
-                &messages::session_renamed(&record.id),
-            )
-            .await?;
-        }
-        MobileCommand::Prune => {
-            let result = manager.prune_inactive_sessions().await?;
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                &messages::sessions_pruned(result.removed_sessions, result.removed_bindings),
-            )
-            .await?;
-        }
-        MobileCommand::Screenshot => {
-            let Some(session_id) = active_session_id(paths, &event.conversation_id).await? else {
-                wechat::send_reply(
-                    paths,
-                    &event.account_id,
-                    &event.conversation_id,
-                    messages::NO_ACTIVE_SESSION,
-                )
-                .await?;
-                return Ok(());
-            };
-            let text = manager.capture_pane(&session_id).await?;
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                &trim_for_chat(&text),
-            )
-            .await?;
-        }
-        MobileCommand::Esc => send_key_to_active(paths, manager, event, TmuxKey::Escape).await?,
-        MobileCommand::Enter => send_key_to_active(paths, manager, event, TmuxKey::Enter).await?,
-        MobileCommand::Interrupt => {
-            send_key_to_active(paths, manager, event, TmuxKey::CtrlC).await?
-        }
-        MobileCommand::Provider { .. } => {
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                messages::PROVIDER_SWITCH_NOT_SUPPORTED,
-            )
-            .await?;
-        }
-        MobileCommand::Recover { .. } => {
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                messages::RECOVER_NOT_SUPPORTED,
-            )
-            .await?;
-        }
-        MobileCommand::Unknown { name, .. } => {
-            wechat::send_reply(
-                paths,
-                &event.account_id,
-                &event.conversation_id,
-                &messages::unknown_command(&name),
+                &messages::session_interrupted(&session_id),
             )
             .await?;
         }
     }
-    Ok(())
+
+    Ok(true)
 }
 
-fn workspace_looks_like_option(workspace: &Path) -> bool {
-    workspace
-        .as_os_str()
-        .to_str()
-        .is_some_and(|value| value.starts_with('-'))
+fn parse_confirmation_decision(text: &str) -> Option<bool> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "yes" | "y" | "确认" | "是" | "好" => Some(true),
+        "no" | "n" | "cancel" | "取消" | "否" => Some(false),
+        _ => None,
+    }
 }
 
-async fn send_key_to_active(
+async fn confirm_interrupt_active(
+    paths: &StatePaths,
+    manager: &SessionManager,
+    event: &InboundWeChatText,
+) -> Result<()> {
+    let Some(session_id) = active_session_id(paths, &event.conversation_id).await? else {
+        wechat::send_reply(
+            paths,
+            &event.account_id,
+            &event.conversation_id,
+            messages::NO_ACTIVE_SESSION,
+        )
+        .await?;
+        return Ok(());
+    };
+    let session_id = manager.resolve_session_id(&session_id).await?;
+    set_confirmation(
+        paths,
+        &event.conversation_id,
+        ConfirmationAction::InterruptSession {
+            session_id: session_id.clone(),
+        },
+        now_millis(),
+    )
+    .await?;
+    wechat::send_reply(
+        paths,
+        &event.account_id,
+        &event.conversation_id,
+        &messages::confirm_interrupt(&session_id),
+    )
+    .await
+}
+
+pub(super) async fn send_key_to_active(
     paths: &StatePaths,
     manager: &SessionManager,
     event: &InboundWeChatText,
@@ -524,11 +437,11 @@ fn monitor_session_state_from_previous(
     }
 }
 
-fn help_text() -> &'static str {
+pub(super) fn help_text() -> &'static str {
     messages::HELP
 }
 
-fn format_session_list(
+pub(super) fn format_session_list(
     sessions: &[SessionSummary],
     current_session_id: Option<&SessionId>,
 ) -> String {
@@ -588,7 +501,7 @@ fn now_string() -> String {
         .to_string()
 }
 
-fn now_millis() -> u64 {
+pub(super) fn now_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -639,6 +552,15 @@ mod tests {
             text,
             "会话列表：1 个\n- 活动 sess-1 · codex · Running\n  /tmp/project"
         );
+    }
+
+    #[test]
+    fn confirmation_decision_accepts_yes_and_no_aliases() {
+        assert_eq!(parse_confirmation_decision("yes"), Some(true));
+        assert_eq!(parse_confirmation_decision("确认"), Some(true));
+        assert_eq!(parse_confirmation_decision("no"), Some(false));
+        assert_eq!(parse_confirmation_decision("取消"), Some(false));
+        assert_eq!(parse_confirmation_decision("hello"), None);
     }
 
 

@@ -4,7 +4,10 @@ use crate::{
         accounts::AccountState,
         atomic::{load_json_or_default, save_json},
         files::StatePaths,
-        sessions::{AppState, BindingRecord, ConversationRecord, SessionId, SessionStatus},
+        sessions::{
+            AppState, BindingRecord, ConfirmationAction, ConfirmationRecord, ConversationRecord,
+            SessionId, SessionStatus,
+        },
     },
     ChatMuxXError, Result,
 };
@@ -95,5 +98,104 @@ pub(super) fn upsert_conversation(state: &mut AppState, record: ConversationReco
         *existing = record;
     } else {
         state.conversations.push(record);
+    }
+}
+
+pub(super) async fn set_confirmation(
+    paths: &StatePaths,
+    conversation_id: &str,
+    action: ConfirmationAction,
+    created_at_ms: u64,
+) -> Result<()> {
+    let mut state: AppState = load_json_or_default(&paths.state).await?;
+    state.schema_version = 1;
+    state
+        .confirmations
+        .retain(|confirmation| confirmation.conversation_id != conversation_id);
+    state.confirmations.push(ConfirmationRecord {
+        conversation_id: conversation_id.to_owned(),
+        action,
+        created_at_ms,
+    });
+    save_json(&paths.state, &state).await
+}
+
+pub(super) async fn take_confirmation(
+    paths: &StatePaths,
+    conversation_id: &str,
+    now_ms: u64,
+    ttl_ms: u64,
+) -> Result<Option<ConfirmationAction>> {
+    let mut state: AppState = load_json_or_default(&paths.state).await?;
+    let mut action = None;
+    state.confirmations.retain(|confirmation| {
+        let expired = now_ms.saturating_sub(confirmation.created_at_ms) > ttl_ms;
+        let matched = confirmation.conversation_id == conversation_id;
+        if matched && !expired {
+            action = Some(confirmation.action.clone());
+        }
+        !(matched || expired)
+    });
+    save_json(&paths.state, &state).await?;
+    Ok(action)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn confirmation_is_stored_and_consumed_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = StatePaths::from_root(dir.path());
+        let session_id = SessionId("main".to_owned());
+
+        set_confirmation(
+            &paths,
+            "conv-1",
+            ConfirmationAction::CloseSession {
+                session_id: session_id.clone(),
+            },
+            1_000,
+        )
+        .await
+        .expect("set confirmation");
+
+        assert_eq!(
+            take_confirmation(&paths, "conv-1", 2_000, 60_000)
+                .await
+                .expect("take confirmation"),
+            Some(ConfirmationAction::CloseSession { session_id })
+        );
+        assert_eq!(
+            take_confirmation(&paths, "conv-1", 2_001, 60_000)
+                .await
+                .expect("take confirmation again"),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_confirmation_is_removed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = StatePaths::from_root(dir.path());
+
+        set_confirmation(
+            &paths,
+            "conv-1",
+            ConfirmationAction::InterruptSession {
+                session_id: SessionId("main".to_owned()),
+            },
+            1_000,
+        )
+        .await
+        .expect("set confirmation");
+
+        assert_eq!(
+            take_confirmation(&paths, "conv-1", 62_000, 60_000)
+                .await
+                .expect("take expired confirmation"),
+            None
+        );
     }
 }
