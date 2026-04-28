@@ -1,8 +1,8 @@
 use super::{
-    clean_selected_option_or_line, clean_status_line, contains_control_hint, contains_prompt_marker,
-    is_spinner_status_line,
-    looks_like_ascii_status_label, looks_like_numbered_option, normalize_agent_pane_text,
-    split_inline_separators, strip_inline_control_hints, strip_standalone_prompt_markers,
+    clean_selected_option_or_line, clean_status_line, contains_control_hint,
+    contains_prompt_marker, is_spinner_status_line, looks_like_ascii_status_label,
+    looks_like_numbered_option, normalize_agent_pane_text, split_inline_separators,
+    strip_inline_control_hints, strip_standalone_prompt_markers,
 };
 
 pub(super) fn normalize_pane_text(text: &str) -> String {
@@ -88,7 +88,10 @@ fn find_prompt_tail(text: &str) -> Option<(usize, &str)> {
         let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
         let before_marker = text[line_start..start].trim();
         let tail = text[start + marker.len()..].trim_start();
-        if before_marker.is_empty() || before_marker.starts_with('•') || before_marker.starts_with('└') {
+        if before_marker.is_empty()
+            || before_marker.starts_with('•')
+            || before_marker.starts_with('└')
+        {
             return Some((start, tail));
         }
         search_from = start + marker.len();

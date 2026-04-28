@@ -4,7 +4,10 @@ use tokio::sync::mpsc;
 
 use super::{now_string, InboundWeChatText};
 use crate::{
-    app::daemon::{state::upsert_conversation, text::{is_redundant_outbound, suppress_recent_outbound_text}},
+    app::daemon::{
+        state::upsert_conversation,
+        text::{is_redundant_outbound, suppress_recent_outbound_text},
+    },
     channel::wechat::{
         conversation_external_id, conversation_id, extract_text, is_group_message, token_ref,
         WeChatClient, WeChatMessage,

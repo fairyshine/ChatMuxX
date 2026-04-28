@@ -5,7 +5,7 @@ mod shell;
 use crate::provider::ProviderKind;
 
 const MODEL_FIELD_LABELS: &[&str] = &["model", "模型"];
-const STATUS_LABEL: &str = "状态";
+const STATUS_LABEL: &str = "Status";
 
 pub(crate) fn split_for_chat(text: &str) -> Vec<String> {
     const MAX_CHARS: usize = 1800;
@@ -132,7 +132,7 @@ pub(crate) fn format_display_message(body: String, footer: Option<&str>) -> Stri
 fn format_terminal_footer(status: Option<&str>, context: Option<&str>) -> Option<String> {
     let mut parts = Vec::new();
     if let Some(status) = status.filter(|value| !value.trim().is_empty()) {
-        parts.push(format!("{STATUS_LABEL}：{}", status.trim()));
+        parts.push(format!("{STATUS_LABEL}: {}", status.trim()));
     }
     if let Some(context) = context.filter(|value| !value.trim().is_empty()) {
         parts.push(context.trim().to_owned());
@@ -149,7 +149,13 @@ pub(crate) fn extract_footer_value(footer: &str, label: &str) -> Option<String> 
     footer.split('·').find_map(|part| {
         let part = part.trim();
         part.strip_prefix(label)
-            .and_then(|value| value.trim().strip_prefix('：').or(Some(value.trim())))
+            .and_then(|value| {
+                value
+                    .trim()
+                    .strip_prefix(':')
+                    .or_else(|| value.trim().strip_prefix('：'))
+                    .or(Some(value.trim()))
+            })
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
@@ -245,8 +251,6 @@ fn looks_like_model_context(text: &str) -> bool {
         && !looks_like_path_only(&text)
         && (lower.contains("model")
             || lower.contains("模型")
-            || lower.contains("usage")
-            || lower.contains("billing")
             || (text.contains('·') && text.chars().any(|ch| ch.is_ascii_digit())))
 }
 
@@ -265,7 +269,6 @@ fn is_terminal_footer_line(line: &str) -> bool {
         || lower.contains("token")
         || lower.contains("context")
         || lower.contains("上下文")
-        || ((lower.contains("usage") || lower.contains("billing")) && cleaned.contains('·'))
         || (cleaned.contains('·')
             && cleaned.chars().any(|ch| ch.is_ascii_digit())
             && !cleaned.contains('?'))
@@ -316,7 +319,10 @@ pub(super) fn normalize_agent_pane_text(
         .enumerate()
         .filter_map(|(index, line)| {
             let cleaned = clean_content_line(line);
-            if index >= footer_start && cleaned.trim() == line.trim() && is_terminal_footer_line(line) {
+            if index >= footer_start
+                && cleaned.trim() == line.trim()
+                && is_terminal_footer_line(line)
+            {
                 None
             } else {
                 Some(cleaned)
@@ -353,18 +359,13 @@ fn is_common_agent_noise_line(line: &str) -> bool {
 
 pub(super) fn is_spinner_status_line(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed
-        .chars()
-        .next()
-        .is_some_and(is_braille_spinner_char)
+    trimmed.chars().next().is_some_and(is_braille_spinner_char)
 }
 
 pub(super) fn clean_status_line(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let without_spinner = trimmed
-        .strip_prefix(|ch| {
-            is_braille_spinner_char(ch)
-        })
+        .strip_prefix(|ch| is_braille_spinner_char(ch))
         .unwrap_or(trimmed)
         .trim();
     if without_spinner.is_empty() {
@@ -441,7 +442,11 @@ fn strip_parenthesized_segments(text: &str, should_strip: impl Fn(&str) -> bool)
 }
 
 fn parenthesized_segment_is_ui_chrome(text: &str) -> bool {
-    contains_control_hint(text) && !text.trim_matches(['(', ')']).trim().eq_ignore_ascii_case("esc")
+    contains_control_hint(text)
+        && !text
+            .trim_matches(['(', ')'])
+            .trim()
+            .eq_ignore_ascii_case("esc")
 }
 
 pub(super) fn clean_selected_option_or_line(line: &str) -> Option<String> {
@@ -568,16 +573,16 @@ mod tests {
 
     #[test]
     fn footer_is_added_to_display_message() {
-        let text = format_display_message("done".to_owned(), Some("状态：thinking · gpt-5.5"));
+        let text = format_display_message("done".to_owned(), Some("Status: thinking · gpt-5.5"));
 
-        assert_eq!(text, "done\n\n——\n状态：thinking · gpt-5.5");
+        assert_eq!(text, "done\n\n——\nStatus: thinking · gpt-5.5");
     }
 
     #[test]
     fn unchanged_footer_is_included_with_display_body() {
-        let footer = footer_for_display(Some("状态：thinking"), Some("状态：thinking"));
+        let footer = footer_for_display(Some("Status: thinking"), Some("Status: thinking"));
 
-        assert_eq!(footer, Some("状态：thinking".to_owned()));
+        assert_eq!(footer, Some("Status: thinking".to_owned()));
     }
 
     #[test]
@@ -594,7 +599,7 @@ mod tests {
             ProviderKind::Codex,
         );
 
-        assert_eq!(footer, Some("状态：thinking · gpt-5.1-codex".to_owned()));
+        assert_eq!(footer, Some("Status: thinking · gpt-5.1-codex".to_owned()));
     }
 
     #[test]
@@ -609,8 +614,9 @@ mod tests {
 
     #[test]
     fn terminal_footer_keeps_claude_startup_context() {
+        let version = "v42.0.7";
         let footer = extract_terminal_footer(
-            "╭─── Claude Code v2.1.119 ─────────╮\n│   Sonnet 4.6 · API Usage Billing   │\n│          ~/Code/ChatMuxX           │\n❯\n  ? for shortcuts              ● high · /effort",
+            &format!("╭─── Claude Code {version} ─────────╮\n│   Sonnet 4.6 · API Usage Billing   │\n│          ~/Code/ChatMuxX           │\n❯\n  ? for shortcuts              ● high · /effort"),
             ProviderKind::Claude,
         );
 
@@ -626,7 +632,9 @@ mod tests {
 
         assert_eq!(
             footer,
-            Some("状态：✻ Pondering… (8s · thinking) · Sonnet 4.6 · API Usage Billing".to_owned())
+            Some(
+                "Status: ✻ Pondering… (8s · thinking) · Sonnet 4.6 · API Usage Billing".to_owned()
+            )
         );
     }
 
@@ -639,7 +647,7 @@ mod tests {
 
         assert_eq!(
             footer,
-            Some("状态：thinking · gpt-5.5 high · ~/Code/ChatMuxX".to_owned())
+            Some("Status: thinking · gpt-5.5 high · ~/Code/ChatMuxX".to_owned())
         );
     }
 }

@@ -72,17 +72,21 @@ fn find_tip_marker(text: &str) -> Option<usize> {
 
 fn marker_tail_has_label(text: &str) -> bool {
     let head = text.trim_start();
-    let label = head
-        .split([':', '：'])
-        .next()
-        .unwrap_or_default()
-        .trim();
-    !label.is_empty()
+    let label = head.split([':', '：']).next().unwrap_or_default().trim();
+    is_hint_label(label)
+        && !label.is_empty()
         && label.chars().count() <= 32
         && label
             .chars()
             .all(|ch| ch.is_ascii_alphabetic() || ch.is_whitespace())
         && (head.contains(':') || head.contains('：'))
+}
+
+fn is_hint_label(label: &str) -> bool {
+    matches!(
+        label.trim().to_ascii_lowercase().as_str(),
+        "tip" | "hint" | "note"
+    )
 }
 
 fn strip_inline_status(text: &str) -> String {
@@ -137,30 +141,49 @@ fn is_claude_noise_line(line: &str) -> bool {
 
 fn looks_like_version_title_line(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
-    lower
+    let has_version = lower.split_whitespace().any(|token| {
+        token.starts_with('v')
+            && token
+                .chars()
+                .skip(1)
+                .next()
+                .is_some_and(|ch| ch.is_ascii_digit())
+    });
+    let has_title_word = lower
         .split_whitespace()
-        .any(|token| token.starts_with('v') && token.chars().skip(1).next().is_some_and(|ch| ch.is_ascii_digit()))
-        && line.chars().count() <= 120
-        && line.chars().filter(|ch| ch.is_ascii_alphabetic()).count() >= 12
+        .any(|token| token.chars().filter(|ch| ch.is_ascii_alphabetic()).count() >= 3);
+
+    has_version && has_title_word && line.chars().count() <= 120
 }
 
 fn looks_like_box_chrome(line: &str) -> bool {
-    line.contains('│') || line.contains('╭') || line.contains('╰') || line.contains('╮') || line.contains('╯')
+    line.contains('│')
+        || line.contains('╭')
+        || line.contains('╰')
+        || line.contains('╮')
+        || line.contains('╯')
 }
 
 fn looks_like_path_only(text: &str) -> bool {
     let text = text.trim();
-    !text.is_empty() && !text.chars().any(char::is_whitespace) && (text.starts_with("~/") || text.starts_with('/'))
+    !text.is_empty()
+        && !text.chars().any(char::is_whitespace)
+        && (text.starts_with("~/") || text.starts_with('/'))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn claude_title(version: &str) -> String {
+        format!("Claude Code {version}")
+    }
+
     #[test]
     fn pane_normalization_filters_welcome_screen() {
+        let title = claude_title("v99.88.77-dev");
         let text = normalize_pane_text(
-            "╭─── Claude Code v2.1.119 ─────────────────────────╮\n│            Welcome back!           │ Tips for getting started\n│               ▐▛███▜▌              │ Run /init to create a CLAUDE.md file\n│   Sonnet 4.6 · API Usage Billing   │ Recent activity\n│          ~/Code/ChatMuxX           │ No recent activity\n╰──────────────────────────────────────────────────╯\n❯\n  ? for shortcuts                             ● high · /effort",
+            &format!("╭─── {title} ─────────────────────────╮\n│            Welcome back!           │ Tips for getting started\n│               ▐▛███▜▌              │ Run /init to create a CLAUDE.md file\n│   Sonnet 4.6 · API Usage Billing   │ Recent activity\n│          ~/Code/ChatMuxX           │ No recent activity\n╰──────────────────────────────────────────────────╯\n❯\n  ? for shortcuts                             ● high · /effort"),
         );
 
         assert_eq!(text, "");
@@ -168,14 +191,22 @@ mod tests {
 
     #[test]
     fn pane_normalization_keeps_help_body_without_modal_chrome() {
+        let title = claude_title("v10.20.30");
         let text = normalize_pane_text(
-            "❯ /help\n────────────────────────\nClaude Code v2.1.119 general commands custom-commands\nClaude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode\nEsc to cancel",
+            &format!("❯ /help\n────────────────────────\n{title} general commands custom-commands\nClaude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode\nEsc to cancel"),
         );
 
         assert_eq!(
             text,
             "Claude understands your codebase, makes edits with your permission.\nShortcuts\n! for bash mode"
         );
+    }
+
+    #[test]
+    fn version_title_detection_is_not_bound_to_one_version() {
+        for version in ["v0.0.1", "v2.9.999", "v99.88.77-dev"] {
+            assert!(looks_like_version_title_line(&claude_title(version)));
+        }
     }
 
     #[test]
@@ -214,6 +245,18 @@ mod tests {
         assert_eq!(
             text,
             "⏺ Searching for 2 patterns, reading 2 files…\n⎿ README.md\n⎿ plugins/mobile-web-debugging/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn pane_normalization_keeps_non_hint_labeled_result_lines() {
+        let text = normalize_pane_text(
+            "⏺ Running command\n⎿ Error: command failed\n⎿ Result: partial output",
+        );
+
+        assert_eq!(
+            text,
+            "⏺ Running command\n⎿ Error: command failed\n⎿ Result: partial output"
         );
     }
 
