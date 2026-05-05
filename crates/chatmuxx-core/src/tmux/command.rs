@@ -14,6 +14,7 @@ const MANAGED_WINDOW_HEIGHT: &str = "80";
 const MANAGED_HISTORY_LIMIT: &str = "10000";
 const CAPTURE_SCROLLBACK_LINES: &str = "-5000";
 const LAUNCH_AFTER_RESIZE_DELAY_SECONDS: &str = "0.10";
+const MANAGED_PLACEHOLDER_COMMAND: &str = "while :; do sleep 3600; done";
 
 #[derive(Clone, Debug, Default)]
 pub struct TmuxClient;
@@ -42,7 +43,7 @@ impl TmuxClient {
             "__main__",
             "sh",
             "-lc",
-            "sleep infinity",
+            MANAGED_PLACEHOLDER_COMMAND,
         ])
         .await?;
         self.configure_managed_session(name).await?;
@@ -294,6 +295,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn managed_placeholder_command_is_portable_shell() {
+        assert_eq!(
+            MANAGED_PLACEHOLDER_COMMAND,
+            "while :; do sleep 3600; done"
+        );
+    }
+
     #[tokio::test]
     async fn tmux_integration_create_capture_and_close() {
         if std::env::var("CHATMUXX_TEST_TMUX").ok().as_deref() != Some("1") {
@@ -302,10 +311,9 @@ mod tests {
 
         let client = TmuxClient::new();
         let session = format!("chatmuxx-test-{}", std::process::id());
-        client
-            .ensure_managed_session(&session)
-            .await
-            .expect("ensure session");
+        let _ = client.run(["kill-session", "-t", &session]).await;
+        client.ensure_managed_session(&session).await.expect("ensure session");
+        assert!(client.has_session(&session).await.expect("has session"));
 
         let window = client
             .create_window(CreateTmuxWindow {

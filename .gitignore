@@ -1,3 +1,8 @@
 references/
 target/
 .DS_Store
+
+.agents/
+.claude/
+skills-lock.json
+xhs/
