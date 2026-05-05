@@ -297,10 +297,7 @@ mod tests {
 
     #[test]
     fn managed_placeholder_command_is_portable_shell() {
-        assert_eq!(
-            MANAGED_PLACEHOLDER_COMMAND,
-            "while :; do sleep 3600; done"
-        );
+        assert_eq!(MANAGED_PLACEHOLDER_COMMAND, "while :; do sleep 3600; done");
     }
 
     #[tokio::test]
@@ -312,7 +309,10 @@ mod tests {
         let client = TmuxClient::new();
         let session = format!("chatmuxx-test-{}", std::process::id());
         let _ = client.run(["kill-session", "-t", &session]).await;
-        client.ensure_managed_session(&session).await.expect("ensure session");
+        client
+            .ensure_managed_session(&session)
+            .await
+            .expect("ensure session");
         assert!(client.has_session(&session).await.expect("has session"));
 
         let window = client
